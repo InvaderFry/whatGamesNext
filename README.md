@@ -71,7 +71,7 @@ seeded with ~20 sample games.
 ## Development
 
 ```bash
-npm test           # unit + API route tests (Vitest)
+npm test           # server unit/API tests + web component tests (Vitest)
 npm run typecheck  # server + web
 npm run lint       # ESLint
 npm run format     # Prettier
