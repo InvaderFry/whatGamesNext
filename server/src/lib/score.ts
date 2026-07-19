@@ -47,21 +47,46 @@ function recencyScore(releaseDate: string | null, now = new Date()): number {
   return Math.max(0, 1 - years / 25); // 25-year-old game → 0
 }
 
+export type ScoreBreakdown = Record<keyof Weights, number>;
+
+function componentScores(g: GameRow, budgetHours: number | null): ScoreBreakdown {
+  const rating = effectiveRating(g);
+  return {
+    rating: rating != null ? rating / 100 : 0.4,
+    unplayed: unplayedScore(g.playtime_minutes),
+    lengthFit: lengthFitScore(g.hltb_main, budgetHours),
+    recency: recencyScore(g.release_date),
+  };
+}
+
 export function compositeScore(
   g: GameRow,
   weights: Weights = DEFAULT_WEIGHTS,
   budgetHours: number | null = null,
 ): number {
-  const rating = effectiveRating(g);
-  const parts = [
-    { w: weights.rating, v: rating != null ? rating / 100 : 0.4 },
-    { w: weights.unplayed, v: unplayedScore(g.playtime_minutes) },
-    { w: weights.lengthFit, v: lengthFitScore(g.hltb_main, budgetHours) },
-    { w: weights.recency, v: recencyScore(g.release_date) },
-  ];
-  const totalWeight = parts.reduce((a, p) => a + p.w, 0);
+  const scores = componentScores(g, budgetHours);
+  const keys = Object.keys(scores) as (keyof Weights)[];
+  const totalWeight = keys.reduce((a, k) => a + weights[k], 0);
   if (totalWeight === 0) return 0;
-  return parts.reduce((a, p) => a + p.w * p.v, 0) / totalWeight;
+  return keys.reduce((a, k) => a + weights[k] * scores[k], 0) / totalWeight;
+}
+
+/**
+ * Each component's share of the final composite score (fractions summing to 1),
+ * so the UI can explain what drove a recommendation.
+ */
+export function scoreBreakdown(
+  g: GameRow,
+  weights: Weights = DEFAULT_WEIGHTS,
+  budgetHours: number | null = null,
+): ScoreBreakdown | null {
+  const scores = componentScores(g, budgetHours);
+  const keys = Object.keys(scores) as (keyof Weights)[];
+  const total = keys.reduce((a, k) => a + weights[k] * scores[k], 0);
+  if (total <= 0) return null;
+  const out = {} as ScoreBreakdown;
+  for (const k of keys) out[k] = Math.round(((weights[k] * scores[k]) / total) * 100) / 100;
+  return out;
 }
 
 export type RecommendMode =
@@ -76,6 +101,7 @@ interface Scored {
   game: GameRow;
   score: number;
   reason: string;
+  breakdown?: ScoreBreakdown | null;
 }
 
 function playable(games: GameRow[]): GameRow[] {
@@ -98,6 +124,7 @@ export function recommend(
           game: g,
           score: compositeScore(g, weights, budget),
           reason: describeComposite(g, budget),
+          breakdown: scoreBreakdown(g, weights, budget),
         }))
         .sort((a, b) => b.score - a.score);
 

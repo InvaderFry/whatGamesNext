@@ -217,6 +217,7 @@ export default function Settings() {
         <div className="row">
           <textarea
             rows={5}
+            aria-label="Epic game titles, one per line"
             placeholder={"Alan Wake 2\nControl\nOuter Wilds"}
             value={manualText}
             onChange={(e) => setManualText(e.target.value)}
@@ -248,7 +249,11 @@ export default function Settings() {
           own on Steam/Epic are matched by title and not duplicated.
         </p>
         <div className="row">
-          <select value={importStore} onChange={(e) => setImportStore(e.target.value)}>
+          <select
+            aria-label="Store to import into"
+            value={importStore}
+            onChange={(e) => setImportStore(e.target.value)}
+          >
             <option value="gog">GOG</option>
             <option value="itch">itch.io</option>
             <option value="other">Other</option>
@@ -257,6 +262,7 @@ export default function Settings() {
         <div className="row">
           <textarea
             rows={5}
+            aria-label="Titles to import, one per line or CSV"
             placeholder={
               "The Witcher 3\nDisco Elysium\n\nor:\ntitle,playtime_hours\nCyberpunk 2077,42"
             }

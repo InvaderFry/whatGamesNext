@@ -73,6 +73,7 @@ export default function Recommend() {
           min={2}
           max={100}
           step={2}
+          aria-label="Time budget in hours"
           value={budget}
           disabled={!useBudget}
           onChange={(e) => setBudget(Number(e.target.value))}
@@ -99,6 +100,7 @@ export default function Recommend() {
             key={`${r.game.id}-${roll}`}
             game={r.game}
             reason={r.reason}
+            breakdown={r.breakdown}
             onChanged={reload}
           />
         ))}

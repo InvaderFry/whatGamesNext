@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Facets, type Game } from "../api";
 import GameCard from "../components/GameCard";
+import { toast } from "../components/Toasts";
 
 const SORTS: [string, string][] = [
   ["rating", "Best rated"],
@@ -66,7 +67,7 @@ export default function Library() {
     api
       .facets()
       .then(setFacets)
-      .catch(() => {});
+      .catch(() => toast("Couldn't load genre/tag filters — is the server running?"));
   }, []);
 
   return (
@@ -75,10 +76,12 @@ export default function Library() {
         <input
           type="text"
           placeholder="Search titles…"
+          aria-label="Search titles"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         <select
+          aria-label="Sort by"
           value={sort}
           onChange={(e) => {
             setSort(e.target.value);
@@ -94,11 +97,16 @@ export default function Library() {
         <button
           className="btn secondary"
           title="Flip sort direction"
+          aria-label="Flip sort direction"
           onClick={() => setDir(dir === "asc" ? "desc" : "asc")}
         >
           {(dir || (sort === "title" || sort === "length" ? "asc" : "desc")) === "asc" ? "↑" : "↓"}
         </button>
-        <select value={store} onChange={(e) => setStore(e.target.value)}>
+        <select
+          aria-label="Filter by store"
+          value={store}
+          onChange={(e) => setStore(e.target.value)}
+        >
           <option value="">All stores</option>
           <option value="steam">Steam</option>
           <option value="epic">Epic</option>
@@ -106,21 +114,33 @@ export default function Library() {
           <option value="itch">itch.io</option>
           <option value="other">Other</option>
         </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)}>
+        <select
+          aria-label="Filter by status"
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
           <option value="">Any status</option>
           <option value="unplayed">Unplayed</option>
           <option value="playing">Playing</option>
           <option value="finished">Finished</option>
           <option value="abandoned">Abandoned</option>
         </select>
-        <select value={lengthBucket} onChange={(e) => setLengthBucket(e.target.value)}>
+        <select
+          aria-label="Filter by length"
+          value={lengthBucket}
+          onChange={(e) => setLengthBucket(e.target.value)}
+        >
           {LENGTH_BUCKETS.map(([k, label]) => (
             <option key={k} value={k}>
               {label}
             </option>
           ))}
         </select>
-        <select value={genre} onChange={(e) => setGenre(e.target.value)}>
+        <select
+          aria-label="Filter by genre"
+          value={genre}
+          onChange={(e) => setGenre(e.target.value)}
+        >
           <option value="">All genres</option>
           {facets.genres.map((g) => (
             <option key={g} value={g}>
@@ -128,7 +148,7 @@ export default function Library() {
             </option>
           ))}
         </select>
-        <select value={tag} onChange={(e) => setTag(e.target.value)}>
+        <select aria-label="Filter by tag" value={tag} onChange={(e) => setTag(e.target.value)}>
           <option value="">All tags</option>
           {facets.tags.map((t) => (
             <option key={t} value={t}>

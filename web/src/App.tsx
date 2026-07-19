@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Library from "./pages/Library";
+import Toasts from "./components/Toasts";
 import Recommend from "./pages/Recommend";
 import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
@@ -36,6 +37,7 @@ export default function App() {
         {page === "stats" && <Stats />}
         {page === "settings" && <Settings />}
       </main>
+      <Toasts />
     </>
   );
 }

@@ -24,9 +24,17 @@ export interface Game {
   enrich_status: "pending" | "done" | "failed";
 }
 
+export interface ScoreBreakdown {
+  rating: number;
+  unplayed: number;
+  lengthFit: number;
+  recency: number;
+}
+
 export interface Recommendation {
   score: number;
   reason: string;
+  breakdown: ScoreBreakdown | null;
   game: Game;
 }
 

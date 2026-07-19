@@ -1,5 +1,19 @@
 import { useState } from "react";
-import { api, difficultyLabel, formatPlaytime, type Game } from "../api";
+import { api, difficultyLabel, formatPlaytime, type Game, type ScoreBreakdown } from "../api";
+
+const BREAKDOWN_LABELS: [keyof ScoreBreakdown, string][] = [
+  ["rating", "rating"],
+  ["unplayed", "untouched"],
+  ["lengthFit", "length fit"],
+  ["recency", "recency"],
+];
+
+function describeBreakdown(b: ScoreBreakdown): string {
+  return BREAKDOWN_LABELS.filter(([k]) => b[k] >= 0.005)
+    .sort((x, y) => b[y[0]] - b[x[0]])
+    .map(([k, label]) => `${label} ${Math.round(b[k] * 100)}%`)
+    .join(" · ");
+}
 
 function ratingClass(r: number | null): string {
   if (r == null) return "";
@@ -20,15 +34,18 @@ const STORE_LABEL = {
 export default function GameCard({
   game: initial,
   reason,
+  breakdown,
   onChanged,
 }: {
   game: Game;
   reason?: string;
+  breakdown?: ScoreBreakdown | null;
   onChanged?: () => void;
 }) {
   const [game, setGame] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [coverFailed, setCoverFailed] = useState(false);
 
   async function patch(p: Parameters<typeof api.patchGame>[1]) {
     setBusy(true);
@@ -46,14 +63,21 @@ export default function GameCard({
 
   return (
     <div className="card">
-      {game.cover_url ? (
-        <img className="cover" src={game.cover_url} alt="" loading="lazy" />
+      {game.cover_url && !coverFailed ? (
+        <img
+          className="cover"
+          src={game.cover_url}
+          alt={`${game.title} cover art`}
+          loading="lazy"
+          onError={() => setCoverFailed(true)}
+        />
       ) : (
         <div className="cover-placeholder">{game.title}</div>
       )}
       <div className="body">
         <div className="title">{game.title}</div>
         {reason && <div className="reason">{reason}</div>}
+        {breakdown && <div className="breakdown">why: {describeBreakdown(breakdown)}</div>}
         {error && <div className="card-error">{error}</div>}
         <div className="badges">
           <span className="badge store">{STORE_LABEL[game.store]}</span>
@@ -86,6 +110,7 @@ export default function GameCard({
             disabled={busy}
             onChange={(e) => void patch({ status: e.target.value })}
             title="Play status"
+            aria-label={`Play status for ${game.title}`}
           >
             <option value="unplayed">Unplayed</option>
             <option value="playing">Playing</option>
@@ -101,6 +126,7 @@ export default function GameCard({
               })
             }
             title="Difficulty override"
+            aria-label={`Difficulty override for ${game.title}`}
           >
             <option value="">Auto diff.</option>
             {[1, 2, 3, 4, 5].map((d) => (
@@ -109,7 +135,11 @@ export default function GameCard({
               </option>
             ))}
           </select>
-          <button disabled={busy} onClick={() => void patch({ hidden: !game.hidden })}>
+          <button
+            disabled={busy}
+            aria-label={`${game.hidden ? "Unhide" : "Hide"} ${game.title}`}
+            onClick={() => void patch({ hidden: !game.hidden })}
+          >
             {game.hidden ? "Unhide" : "Hide"}
           </button>
         </div>
