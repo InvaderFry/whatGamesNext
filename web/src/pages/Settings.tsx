@@ -297,6 +297,12 @@ export default function Settings() {
             </div>
           </>
         )}
+        {enrich?.hltbUnavailable && (
+          <p className="hint status-warn">
+            HowLongToBeat looks unreachable right now — game lengths are being skipped. They'll be
+            filled in if you re-run enrichment once it's back.
+          </p>
+        )}
         {enrich?.lastError && <p className="hint status-warn">Last error: {enrich.lastError}</p>}
       </div>
     </>

@@ -45,6 +45,7 @@ export interface SyncStatus {
     failed: number;
     current: string | null;
     lastError: string | null;
+    hltbUnavailable: boolean;
   };
   config: {
     steamConfigured: boolean;

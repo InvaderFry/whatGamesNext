@@ -3,8 +3,9 @@ import { bestMatch } from "../lib/match.js";
 /**
  * HowLongToBeat has no official API. Its site queries POST /api/seek/<token>,
  * where the token is embedded in the site's bundled JS. We extract the token
- * once per process and cache it; if HLTB changes their bundle format this
- * fails soft (games simply keep null lengths).
+ * once per process and cache it; a stale token is re-derived and the search
+ * retried once. If HLTB changes their bundle format this fails soft (games
+ * simply keep null lengths).
  */
 
 export interface HltbData {
@@ -17,6 +18,20 @@ const HLTB = "https://howlongtobeat.com";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36";
 
+/** Pure parsers, exported for tests — the part most likely to break when HLTB changes their build. */
+export function extractAppScriptPaths(html: string): string[] {
+  return [...html.matchAll(/src="(\/_next\/static\/chunks\/pages\/_app-[^"]+\.js)"/g)].map(
+    ([, src]) => src,
+  );
+}
+
+// Matches fetch("/api/<name>/".concat("a").concat("b") style token assembly.
+export function extractSeekPath(js: string): string | null {
+  const m = js.match(/\/api\/(\w+)\/"(?:\.concat\("([^"]*)"\))(?:\.concat\("([^"]*)"\))?/);
+  if (!m) return null;
+  return `/api/${m[1]}/${m[2] ?? ""}${m[3] ?? ""}`;
+}
+
 let cachedEndpoint: string | null = null;
 
 async function findSeekEndpoint(): Promise<string> {
@@ -24,13 +39,11 @@ async function findSeekEndpoint(): Promise<string> {
   const home = await fetch(HLTB, { headers: { "User-Agent": UA } });
   if (!home.ok) throw new Error(`HLTB homepage ${home.status}`);
   const html = await home.text();
-  const scripts = [...html.matchAll(/src="(\/_next\/static\/chunks\/pages\/_app-[^"]+\.js)"/g)];
-  for (const [, src] of scripts) {
+  for (const src of extractAppScriptPaths(html)) {
     const js = await (await fetch(HLTB + src, { headers: { "User-Agent": UA } })).text();
-    // Matches fetch("/api/<name>/".concat("a").concat("b") style token assembly
-    const m = js.match(/\/api\/(\w+)\/"(?:\.concat\("([^"]*)"\))(?:\.concat\("([^"]*)"\))?/);
-    if (m) {
-      cachedEndpoint = `${HLTB}/api/${m[1]}/${m[2] ?? ""}${m[3] ?? ""}`;
+    const path = extractSeekPath(js);
+    if (path) {
+      cachedEndpoint = HLTB + path;
       return cachedEndpoint;
     }
   }
@@ -45,9 +58,8 @@ interface HltbSearchEntry {
   comp_100: number;
 }
 
-export async function lookupHltb(title: string): Promise<HltbData | null> {
-  const endpoint = await findSeekEndpoint();
-  const res = await fetch(endpoint, {
+async function seek(endpoint: string, title: string): Promise<Response> {
+  return fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -80,10 +92,18 @@ export async function lookupHltb(title: string): Promise<HltbData | null> {
       useCache: true,
     }),
   });
+}
+
+export async function lookupHltb(title: string): Promise<HltbData | null> {
+  let res = await seek(await findSeekEndpoint(), title);
   if (!res.ok) {
-    // A stale token returns 404 — drop the cache so the next call re-derives it.
+    // A stale token typically returns 404 — re-derive it and retry once.
     cachedEndpoint = null;
-    throw new Error(`HLTB search ${res.status}`);
+    res = await seek(await findSeekEndpoint(), title);
+    if (!res.ok) {
+      cachedEndpoint = null;
+      throw new Error(`HLTB search ${res.status}`);
+    }
   }
   const body = (await res.json()) as { data?: HltbSearchEntry[] };
   const results = body.data ?? [];

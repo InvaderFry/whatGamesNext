@@ -19,7 +19,12 @@ export interface EnrichProgress {
   failed: number;
   current: string | null;
   lastError: string | null;
+  /** True after several consecutive HLTB errors — the scraper is likely broken or blocked. */
+  hltbUnavailable: boolean;
 }
+
+const HLTB_UNAVAILABLE_AFTER = 3;
+let hltbConsecutiveErrors = 0;
 
 const progress: EnrichProgress = {
   running: false,
@@ -28,6 +33,7 @@ const progress: EnrichProgress = {
   failed: 0,
   current: null,
   lastError: null,
+  hltbUnavailable: false,
 };
 
 export function getEnrichProgress(): EnrichProgress {
@@ -48,6 +54,8 @@ export function startEnrichment(): { started: boolean } {
   progress.done = 0;
   progress.failed = 0;
   progress.lastError = null;
+  progress.hltbUnavailable = false;
+  hltbConsecutiveErrors = 0;
 
   void runQueue(pending).finally(() => {
     progress.running = false;
@@ -80,11 +88,17 @@ async function enrichOne(game: GameRow) {
 
   const rawg = getSetting("rawg_api_key") ? await lookupRawg(game.title).catch(() => null) : null;
 
+  // HLTB is unofficial and flaky — missing lengths are acceptable, but flag
+  // a run of consecutive errors so the UI can say lengths are being skipped.
   let hltb = null;
-  try {
-    hltb = await lookupHltb(game.title);
-  } catch {
-    // HLTB is unofficial and flaky — missing lengths are acceptable.
+  if (!progress.hltbUnavailable) {
+    try {
+      hltb = await lookupHltb(game.title);
+      hltbConsecutiveErrors = 0;
+    } catch {
+      hltbConsecutiveErrors++;
+      if (hltbConsecutiveErrors >= HLTB_UNAVAILABLE_AFTER) progress.hltbUnavailable = true;
+    }
   }
 
   let review = { reviewPct: null as number | null, reviewCount: null as number | null };
