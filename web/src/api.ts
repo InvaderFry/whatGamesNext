@@ -71,7 +71,10 @@ export const api = {
   games: (params: URLSearchParams) =>
     request<{ count: number; games: Game[] }>(`/api/games?${params}`),
   facets: () => request<Facets>("/api/games/facets"),
-  patchGame: (id: number, patch: Partial<{ status: string; hidden: boolean; difficulty_override: number | null }>) =>
+  patchGame: (
+    id: number,
+    patch: Partial<{ status: string; hidden: boolean; difficulty_override: number | null }>,
+  ) =>
     request<Game>(`/api/games/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -80,8 +83,14 @@ export const api = {
   recommend: (params: URLSearchParams) =>
     request<{ mode: string; count: number; results: Recommendation[] }>(`/api/recommend?${params}`),
   syncStatus: () => request<SyncStatus>("/api/sync/status"),
-  syncSteam: () => request<{ fetched: number; added: number; updated: number }>("/api/sync/steam", { method: "POST" }),
-  syncEpic: () => request<{ fetched: number; added: number; updated: number }>("/api/sync/epic", { method: "POST" }),
+  syncSteam: () =>
+    request<{ fetched: number; added: number; updated: number }>("/api/sync/steam", {
+      method: "POST",
+    }),
+  syncEpic: () =>
+    request<{ fetched: number; added: number; updated: number }>("/api/sync/epic", {
+      method: "POST",
+    }),
   syncEpicManual: (titles: string) =>
     request<{ fetched: number; added: number; updated: number }>("/api/sync/epic/manual", {
       method: "POST",
@@ -89,7 +98,8 @@ export const api = {
       body: JSON.stringify({ titles }),
     }),
   startEnrich: () => request<{ started: boolean }>("/api/sync/enrich", { method: "POST" }),
-  retryFailedEnrich: () => request<{ requeued: number }>("/api/sync/enrich/retry-failed", { method: "POST" }),
+  retryFailedEnrich: () =>
+    request<{ requeued: number }>("/api/sync/enrich/retry-failed", { method: "POST" }),
 };
 
 export function formatPlaytime(minutes: number): string {

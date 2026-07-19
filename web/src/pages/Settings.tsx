@@ -60,12 +60,18 @@ export default function Settings() {
         <h3>Library</h3>
         {lib && (
           <p className="hint">
-            {lib.total} games total — {lib.steam} on Steam, {lib.epic} on Epic. {lib.enriched} enriched
-            {lib.enrich_failed > 0 && <span className="status-warn">, {lib.enrich_failed} failed</span>}.
+            {lib.total} games total — {lib.steam} on Steam, {lib.epic} on Epic. {lib.enriched}{" "}
+            enriched
+            {lib.enrich_failed > 0 && (
+              <span className="status-warn">, {lib.enrich_failed} failed</span>
+            )}
+            .
           </p>
         )}
         {status?.config.demo && (
-          <p className="hint status-warn">Demo mode is on (DEMO=1) — the library is seeded with sample games.</p>
+          <p className="hint status-warn">
+            Demo mode is on (DEMO=1) — the library is seeded with sample games.
+          </p>
         )}
       </div>
 
@@ -89,8 +95,12 @@ export default function Settings() {
             className="btn"
             disabled={busy !== null || !status?.config.steamConfigured}
             onClick={() =>
-              void run("steam", api.syncSteam, (r: { fetched: number; added: number }) =>
-                `Steam: fetched ${r.fetched} games, ${r.added} new.`)
+              void run(
+                "steam",
+                api.syncSteam,
+                (r: { fetched: number; added: number }) =>
+                  `Steam: fetched ${r.fetched} games, ${r.added} new.`,
+              )
             }
           >
             {busy === "steam" ? "Syncing…" : "Sync Steam library"}
@@ -105,16 +115,20 @@ export default function Settings() {
           <a href="https://github.com/derrod/legendary" target="_blank" rel="noreferrer">
             legendary
           </a>{" "}
-          CLI (<code>pip install legendary-gl</code>, then <code>legendary auth</code>). If you don't want to
-          install it, paste your game titles below instead, one per line.
+          CLI (<code>pip install legendary-gl</code>, then <code>legendary auth</code>). If you
+          don't want to install it, paste your game titles below instead, one per line.
         </p>
         <div className="row">
           <button
             className="btn"
             disabled={busy !== null}
             onClick={() =>
-              void run("epic", api.syncEpic, (r: { fetched: number; added: number }) =>
-                `Epic: fetched ${r.fetched} games, ${r.added} new.`)
+              void run(
+                "epic",
+                api.syncEpic,
+                (r: { fetched: number; added: number }) =>
+                  `Epic: fetched ${r.fetched} games, ${r.added} new.`,
+              )
             }
           >
             {busy === "epic" ? "Syncing…" : "Sync via legendary"}
@@ -133,8 +147,12 @@ export default function Settings() {
             className="btn secondary"
             disabled={busy !== null || !manualText.trim()}
             onClick={() =>
-              void run("epic-manual", () => api.syncEpicManual(manualText), (r: { fetched: number; added: number }) =>
-                `Imported ${r.fetched} Epic titles, ${r.added} new.`)
+              void run(
+                "epic-manual",
+                () => api.syncEpicManual(manualText),
+                (r: { fetched: number; added: number }) =>
+                  `Imported ${r.fetched} Epic titles, ${r.added} new.`,
+              )
             }
           >
             Import pasted titles
@@ -145,9 +163,9 @@ export default function Settings() {
       <div className="settings-card">
         <h3>Enrichment</h3>
         <p className="hint">
-          Fills in Metacritic/RAWG ratings, HowLongToBeat lengths, Steam review scores, and estimated
-          difficulty for every synced game. Rate-limited to be polite — a large library takes a while, and you
-          can close the tab and come back.{" "}
+          Fills in Metacritic/RAWG ratings, HowLongToBeat lengths, Steam review scores, and
+          estimated difficulty for every synced game. Rate-limited to be polite — a large library
+          takes a while, and you can close the tab and come back.{" "}
           {!status?.config.rawgConfigured && (
             <span className="status-warn">
               RAWG_API_KEY is not set (free at{" "}
@@ -174,8 +192,11 @@ export default function Settings() {
               className="btn secondary"
               disabled={busy !== null || enrich?.running}
               onClick={() => {
-                void run("retry", api.retryFailedEnrich, (r: { requeued: number }) =>
-                  `Requeued ${r.requeued} failed games.`);
+                void run(
+                  "retry",
+                  api.retryFailedEnrich,
+                  (r: { requeued: number }) => `Requeued ${r.requeued} failed games.`,
+                );
                 startPolling();
               }}
             >
@@ -190,7 +211,11 @@ export default function Settings() {
               {enrich.current && <> — currently: {enrich.current}</>}
             </p>
             <div className="progress-bar">
-              <div style={{ width: `${((enrich.done + enrich.failed) / Math.max(1, enrich.total)) * 100}%` }} />
+              <div
+                style={{
+                  width: `${((enrich.done + enrich.failed) / Math.max(1, enrich.total)) * 100}%`,
+                }}
+              />
             </div>
           </>
         )}

@@ -128,7 +128,9 @@ async function enrichOne(game: GameRow) {
 /** Mark failed games as pending again so the next run retries them. */
 export function retryFailed(): number {
   const info = getDb()
-    .prepare("UPDATE games SET enrich_status = 'pending', enrich_error = NULL WHERE enrich_status = 'failed'")
+    .prepare(
+      "UPDATE games SET enrich_status = 'pending', enrich_error = NULL WHERE enrich_status = 'failed'",
+    )
     .run();
   return info.changes;
 }

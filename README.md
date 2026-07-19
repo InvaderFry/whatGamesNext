@@ -6,14 +6,14 @@ A local, cross-platform web app (Windows / macOS / Linux — anywhere Node runs)
 libraries, enriches every game with ratings, completion times, and an estimated difficulty, then
 ranks your backlog in several ways:
 
-| Mode | What it does |
-| --- | --- |
-| **Play next** | Weighted blend of rating, how untouched the game is, fit with your time budget, and recency — with a time-budget slider |
-| **Quick wins** | Short, highly rated games you haven't started |
-| **Backlog shame** | Acclaimed games (80+) you've barely played |
-| **Hidden gems** | ≥90% positive on Steam but with few reviews |
-| **Classics you missed** | 8+ year old greats still unplayed |
-| **Surprise me** | One weighted-random pick, with a reroll button |
+| Mode                    | What it does                                                                                                            |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Play next**           | Weighted blend of rating, how untouched the game is, fit with your time budget, and recency — with a time-budget slider |
+| **Quick wins**          | Short, highly rated games you haven't started                                                                           |
+| **Backlog shame**       | Acclaimed games (80+) you've barely played                                                                              |
+| **Hidden gems**         | ≥90% positive on Steam but with few reviews                                                                             |
+| **Classics you missed** | 8+ year old greats still unplayed                                                                                       |
+| **Surprise me**         | One weighted-random pick, with a reroll button                                                                          |
 
 The **Library** page lets you sort by rating / Metacritic / Steam review % / length / difficulty /
 playtime / release date, and filter by store, status, length bucket, genre, and tag. Each game can
@@ -43,7 +43,7 @@ npm run dev            # server on :3001, UI on http://localhost:5173
 
 1. **Steam**: get an API key at [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
    → `STEAM_API_KEY`. Find your SteamID64 (17-digit number) at [steamid.io](https://steamid.io)
-   → `STEAM_ID`. Your profile's *game details* must be public for the API to list your games.
+   → `STEAM_ID`. Your profile's _game details_ must be public for the API to list your games.
 2. **RAWG**: get a key at [rawg.io/apidocs](https://rawg.io/apidocs) → `RAWG_API_KEY`.
 3. **Epic (optional)**: `pip install legendary-gl`, then `legendary auth` once. Or skip it and paste
    your titles in Settings → Epic.

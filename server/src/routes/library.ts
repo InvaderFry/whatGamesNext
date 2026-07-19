@@ -62,7 +62,8 @@ function toApi(g: GameRow) {
 
 libraryRouter.get("/games", (req, res) => {
   const q = req.query;
-  const num = (v: unknown) => (v != null && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : undefined);
+  const num = (v: unknown) =>
+    v != null && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : undefined;
   const filters: GameFilters = {
     store: typeof q.store === "string" ? q.store : undefined,
     status: typeof q.status === "string" ? q.status : undefined,
@@ -76,7 +77,8 @@ libraryRouter.get("/games", (req, res) => {
     includeHidden: q.includeHidden === "1",
   };
   const sort = (typeof q.sort === "string" ? q.sort : "title") as SortKey;
-  const dir = q.dir === "asc" ? "asc" : q.dir === "desc" ? "desc" : sort === "title" ? "asc" : "desc";
+  const dir =
+    q.dir === "asc" ? "asc" : q.dir === "desc" ? "desc" : sort === "title" ? "asc" : "desc";
   const rows = sortGames(listGames(filters), sort, dir);
   res.json({ count: rows.length, games: rows.map(toApi) });
 });
@@ -128,7 +130,9 @@ libraryRouter.patch("/games/:id", (req, res) => {
   if (body.difficulty_override !== undefined) {
     if (
       body.difficulty_override !== null &&
-      (!Number.isInteger(body.difficulty_override) || body.difficulty_override < 1 || body.difficulty_override > 5)
+      (!Number.isInteger(body.difficulty_override) ||
+        body.difficulty_override < 1 ||
+        body.difficulty_override > 5)
     ) {
       return res.status(400).json({ error: "difficulty_override must be 1-5 or null" });
     }

@@ -36,7 +36,9 @@ function game(overrides: Partial<GameRow>): GameRow {
 
 describe("effectiveRating", () => {
   it("prefers metacritic, then rawg (scaled), then steam", () => {
-    expect(effectiveRating(game({ metacritic: 90, rawg_rating: 2, steam_review_pct: 50 }))).toBe(90);
+    expect(effectiveRating(game({ metacritic: 90, rawg_rating: 2, steam_review_pct: 50 }))).toBe(
+      90,
+    );
     expect(effectiveRating(game({ rawg_rating: 4.5, steam_review_pct: 50 }))).toBe(90);
     expect(effectiveRating(game({ steam_review_pct: 85 }))).toBe(85);
     expect(effectiveRating(game({}))).toBeNull();
@@ -53,22 +55,58 @@ describe("compositeScore", () => {
   it("rewards games that fit the time budget", () => {
     const short = game({ metacritic: 85, hltb_main: 8 });
     const long = game({ metacritic: 85, hltb_main: 80 });
-    expect(compositeScore(short, undefined, 10)).toBeGreaterThan(compositeScore(long, undefined, 10));
+    expect(compositeScore(short, undefined, 10)).toBeGreaterThan(
+      compositeScore(long, undefined, 10),
+    );
   });
 });
 
 describe("recommend", () => {
   const library = [
-    game({ id: 1, title: "Acclaimed Unplayed", metacritic: 95, playtime_minutes: 0, hltb_main: 10, release_date: "2023-01-01" }),
-    game({ id: 2, title: "Old Classic", metacritic: 96, playtime_minutes: 0, hltb_main: 13, release_date: "2004-11-16" }),
-    game({ id: 3, title: "Hidden Gem", steam_review_pct: 95, steam_review_count: 800, playtime_minutes: 0, hltb_main: 6, release_date: "2022-01-01" }),
+    game({
+      id: 1,
+      title: "Acclaimed Unplayed",
+      metacritic: 95,
+      playtime_minutes: 0,
+      hltb_main: 10,
+      release_date: "2023-01-01",
+    }),
+    game({
+      id: 2,
+      title: "Old Classic",
+      metacritic: 96,
+      playtime_minutes: 0,
+      hltb_main: 13,
+      release_date: "2004-11-16",
+    }),
+    game({
+      id: 3,
+      title: "Hidden Gem",
+      steam_review_pct: 95,
+      steam_review_count: 800,
+      playtime_minutes: 0,
+      hltb_main: 6,
+      release_date: "2022-01-01",
+    }),
     game({ id: 4, title: "Already Finished", metacritic: 99, status: "finished" }),
     game({ id: 5, title: "Hidden Game", metacritic: 90, hidden: 1 }),
-    game({ id: 6, title: "Big Popular Game", steam_review_pct: 96, steam_review_count: 500000, playtime_minutes: 6000 }),
+    game({
+      id: 6,
+      title: "Big Popular Game",
+      steam_review_pct: 96,
+      steam_review_count: 500000,
+      playtime_minutes: 6000,
+    }),
   ];
 
   it("excludes finished and hidden games from every mode", () => {
-    for (const mode of ["play-next", "quick-wins", "backlog-shame", "hidden-gems", "classics-missed"] as const) {
+    for (const mode of [
+      "play-next",
+      "quick-wins",
+      "backlog-shame",
+      "hidden-gems",
+      "classics-missed",
+    ] as const) {
       const ids = recommend(library, mode).map((r) => r.game.id);
       expect(ids).not.toContain(4);
       expect(ids).not.toContain(5);

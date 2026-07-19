@@ -63,7 +63,10 @@ export default function Library() {
   }, [load]);
 
   useEffect(() => {
-    api.facets().then(setFacets).catch(() => {});
+    api
+      .facets()
+      .then(setFacets)
+      .catch(() => {});
   }, []);
 
   return (
@@ -75,7 +78,13 @@ export default function Library() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <select value={sort} onChange={(e) => { setSort(e.target.value); setDir(""); }}>
+        <select
+          value={sort}
+          onChange={(e) => {
+            setSort(e.target.value);
+            setDir("");
+          }}
+        >
           {SORTS.map(([k, label]) => (
             <option key={k} value={k}>
               Sort: {label}

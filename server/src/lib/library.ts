@@ -145,7 +145,9 @@ export function listGames(filters: GameFilters = {}): GameRow[] {
   // Genre/tag filters need JSON parsing, so apply in JS.
   if (filters.genre) {
     const g = filters.genre.toLowerCase();
-    rows = rows.filter((r) => (JSON.parse(r.genres) as string[]).some((x) => x.toLowerCase() === g));
+    rows = rows.filter((r) =>
+      (JSON.parse(r.genres) as string[]).some((x) => x.toLowerCase() === g),
+    );
   }
   if (filters.tag) {
     const t = filters.tag.toLowerCase();

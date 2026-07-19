@@ -65,12 +65,7 @@ export function compositeScore(
 }
 
 export type RecommendMode =
-  | "play-next"
-  | "quick-wins"
-  | "backlog-shame"
-  | "hidden-gems"
-  | "classics-missed"
-  | "surprise";
+  "play-next" | "quick-wins" | "backlog-shame" | "hidden-gems" | "classics-missed" | "surprise";
 
 export interface RecommendOptions {
   budgetHours?: number | null;
@@ -108,7 +103,9 @@ export function recommend(
 
     case "quick-wins":
       return pool
-        .filter((g) => g.hltb_main != null && g.hltb_main <= (budget ?? 12) && g.playtime_minutes < 120)
+        .filter(
+          (g) => g.hltb_main != null && g.hltb_main <= (budget ?? 12) && g.playtime_minutes < 120,
+        )
         .map((g) => {
           const rating = effectiveRating(g) ?? 40;
           return {
@@ -158,7 +155,8 @@ export function recommend(
           const rating = effectiveRating(g);
           if (rating == null || rating < 85 || g.playtime_minutes >= 120) return false;
           if (!g.release_date) return false;
-          const age = (Date.now() - new Date(g.release_date).getTime()) / (365.25 * 24 * 3600 * 1000);
+          const age =
+            (Date.now() - new Date(g.release_date).getTime()) / (365.25 * 24 * 3600 * 1000);
           return age >= 8;
         })
         .map((g) => ({
@@ -188,7 +186,11 @@ function describeComposite(g: GameRow, budget: number | null): string {
   const rating = effectiveRating(g);
   if (rating != null) bits.push(`rated ${Math.round(rating)}`);
   if (g.hltb_main != null) {
-    bits.push(budget && g.hltb_main <= budget ? `${g.hltb_main}h — fits your budget` : `${g.hltb_main}h main story`);
+    bits.push(
+      budget && g.hltb_main <= budget
+        ? `${g.hltb_main}h — fits your budget`
+        : `${g.hltb_main}h main story`,
+    );
   }
   if (g.playtime_minutes === 0) bits.push("never played");
   else if (g.playtime_minutes < 120) bits.push(`only ${formatMinutes(g.playtime_minutes)} played`);

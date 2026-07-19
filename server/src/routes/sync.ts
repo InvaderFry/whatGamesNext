@@ -32,7 +32,9 @@ syncRouter.post("/sync/epic", async (_req, res) => {
 syncRouter.post("/sync/epic/manual", (req, res) => {
   const text = (req.body as { titles?: string }).titles;
   if (!text || typeof text !== "string") {
-    return res.status(400).json({ error: "body must be { titles: string } with one title per line" });
+    return res
+      .status(400)
+      .json({ error: "body must be { titles: string } with one title per line" });
   }
   const titles = parseManualTitles(text);
   const result = upsertEpicGames(titles.map((t) => ({ appName: "", title: t })));

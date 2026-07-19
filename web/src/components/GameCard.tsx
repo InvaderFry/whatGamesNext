@@ -84,7 +84,9 @@ export default function GameCard({
             value={game.difficulty_override ?? ""}
             disabled={busy}
             onChange={(e) =>
-              void patch({ difficulty_override: e.target.value === "" ? null : Number(e.target.value) })
+              void patch({
+                difficulty_override: e.target.value === "" ? null : Number(e.target.value),
+              })
             }
             title="Difficulty override"
           >
