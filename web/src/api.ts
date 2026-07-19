@@ -58,6 +58,14 @@ export interface Facets {
   tags: string[];
 }
 
+export interface SettingInfo {
+  configured: boolean;
+  source: "settings" | "env" | null;
+  preview: string | null;
+}
+
+export type SettingsMap = Record<"steam_api_key" | "steam_id" | "rawg_api_key", SettingInfo>;
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
   const body = await res.json().catch(() => ({}));
@@ -96,6 +104,13 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ titles }),
+    }),
+  settings: () => request<SettingsMap>("/api/settings"),
+  saveSettings: (patch: Partial<Record<keyof SettingsMap, string | null>>) =>
+    request<SettingsMap>("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
     }),
   startEnrich: () => request<{ started: boolean }>("/api/sync/enrich", { method: "POST" }),
   retryFailedEnrich: () =>

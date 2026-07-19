@@ -13,6 +13,10 @@ if (env.demo) {
 
 app.listen(env.port, () => {
   console.log(`whatGamesNext server listening on http://localhost:${env.port}`);
-  if (!env.steamApiKey) console.log("  (STEAM_API_KEY not set — Steam sync disabled)");
-  if (!env.rawgApiKey) console.log("  (RAWG_API_KEY not set — rating enrichment disabled)");
+  if (!env.steamApiKey) {
+    console.log("  (STEAM_API_KEY not set — configure Steam in the Settings tab or .env)");
+  }
+  if (!env.rawgApiKey) {
+    console.log("  (RAWG_API_KEY not set — configure RAWG in the Settings tab or .env)");
+  }
 });

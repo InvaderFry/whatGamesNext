@@ -228,3 +228,34 @@ describe("sync routes", () => {
     expect(res.body.config).toHaveProperty("steamConfigured");
   });
 });
+
+describe("settings routes", () => {
+  it("saves settings, masks API keys, and reflects them in sync status", async () => {
+    const put = await request(app)
+      .put("/api/settings")
+      .send({ steam_api_key: "ABCDEF123456", steam_id: "76561198000000000" });
+    expect(put.status).toBe(200);
+    expect(put.body.steam_api_key).toMatchObject({
+      configured: true,
+      source: "settings",
+      preview: "…3456",
+    });
+    expect(put.body.steam_id.preview).toBe("76561198000000000");
+
+    const status = await request(app).get("/api/sync/status");
+    expect(status.body.config.steamConfigured).toBe(true);
+    expect(status.body.config.rawgConfigured).toBe(false);
+  });
+
+  it("clears a setting with null", async () => {
+    await request(app).put("/api/settings").send({ rawg_api_key: "secret-key" });
+    const cleared = await request(app).put("/api/settings").send({ rawg_api_key: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.rawg_api_key.configured).toBe(false);
+  });
+
+  it("rejects unknown-only or malformed bodies", async () => {
+    expect((await request(app).put("/api/settings").send({ nonsense: "x" })).status).toBe(400);
+    expect((await request(app).put("/api/settings").send({ steam_id: 42 })).status).toBe(400);
+  });
+});

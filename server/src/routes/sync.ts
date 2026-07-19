@@ -5,6 +5,7 @@ import { fetchEpicGames, parseManualTitles } from "../sources/epic.js";
 import { upsertSteamGames, upsertEpicGames } from "../lib/library.js";
 import { startEnrichment, getEnrichProgress, retryFailed } from "../lib/enrich.js";
 import { env } from "../env.js";
+import { getSetting } from "../lib/settings.js";
 
 export const syncRouter = Router();
 
@@ -69,8 +70,8 @@ syncRouter.get("/sync/status", (_req, res) => {
     library: counts,
     enrichment: getEnrichProgress(),
     config: {
-      steamConfigured: !!(env.steamApiKey && env.steamId),
-      rawgConfigured: !!env.rawgApiKey,
+      steamConfigured: !!(getSetting("steam_api_key") && getSetting("steam_id")),
+      rawgConfigured: !!getSetting("rawg_api_key"),
       demo: env.demo,
     },
   });

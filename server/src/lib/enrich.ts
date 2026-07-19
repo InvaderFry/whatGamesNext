@@ -3,7 +3,7 @@ import { deriveDifficulty } from "./difficulty.js";
 import { lookupRawg } from "../sources/rawg.js";
 import { lookupHltb } from "../sources/hltb.js";
 import { fetchReviewSummary } from "../sources/steam.js";
-import { env } from "../env.js";
+import { getSetting } from "./settings.js";
 
 /**
  * In-process background enrichment queue. Walks all games with
@@ -78,7 +78,7 @@ async function runQueue(games: GameRow[]) {
 async function enrichOne(game: GameRow) {
   const db = getDb();
 
-  const rawg = env.rawgApiKey ? await lookupRawg(game.title).catch(() => null) : null;
+  const rawg = getSetting("rawg_api_key") ? await lookupRawg(game.title).catch(() => null) : null;
 
   let hltb = null;
   try {

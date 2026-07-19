@@ -35,11 +35,13 @@ Requires Node 20+.
 
 ```bash
 npm install
-cp .env.example .env   # then fill in the keys below
 npm run dev            # server on :3001, UI on http://localhost:5173
 ```
 
 ### Keys (all free)
+
+Enter these in the app under **Settings → API keys** (stored in the local database), or put them in
+a `.env` file (`cp .env.example .env`) — the Settings values win when both are set.
 
 1. **Steam**: get an API key at [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
    → `STEAM_API_KEY`. Find your SteamID64 (17-digit number) at [steamid.io](https://steamid.io)
@@ -63,9 +65,13 @@ seeded with ~20 sample games.
 ## Development
 
 ```bash
-npm test           # unit tests (title matching, difficulty heuristic, ranking modes)
+npm test           # unit + API route tests (Vitest)
 npm run typecheck  # server + web
+npm run lint       # ESLint
+npm run format     # Prettier
 npm run build      # production build; then `npm start` serves UI + API on :3001
 ```
+
+CI (GitHub Actions) runs typecheck, lint, format check, and tests on every push and PR.
 
 Data lives in `data/games.db` (SQLite). Delete it to start over.

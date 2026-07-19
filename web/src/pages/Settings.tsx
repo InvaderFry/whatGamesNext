@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type SyncStatus } from "../api";
+import { api, type SettingsMap, type SyncStatus } from "../api";
+
+const SETTING_FIELDS: [keyof SettingsMap, string, string][] = [
+  ["steam_api_key", "Steam API key", "From steamcommunity.com/dev/apikey"],
+  ["steam_id", "SteamID64", "Your 17-digit SteamID (steamid.io can find it)"],
+  ["rawg_api_key", "RAWG API key", "Free at rawg.io/apidocs — used for ratings"],
+];
 
 export default function Settings() {
   const [status, setStatus] = useState<SyncStatus | null>(null);
+  const [settings, setSettings] = useState<SettingsMap | null>(null);
+  const [drafts, setDrafts] = useState<Partial<Record<keyof SettingsMap, string>>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -11,8 +19,9 @@ export default function Settings() {
 
   const refresh = useCallback(async () => {
     try {
-      const s = await api.syncStatus();
+      const [s, cfg] = await Promise.all([api.syncStatus(), api.settings()]);
       setStatus(s);
+      setSettings(cfg);
       if (!s.enrichment.running && pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
@@ -48,6 +57,28 @@ export default function Settings() {
     }
   }
 
+  async function saveSettings() {
+    const patch: Partial<Record<keyof SettingsMap, string>> = {};
+    for (const [key, value] of Object.entries(drafts)) {
+      if (value.trim()) patch[key as keyof SettingsMap] = value.trim();
+    }
+    if (!Object.keys(patch).length) return;
+    await run(
+      "settings",
+      () => api.saveSettings(patch),
+      () => "Settings saved.",
+    );
+    setDrafts({});
+  }
+
+  async function clearSetting(key: keyof SettingsMap) {
+    await run(
+      "settings",
+      () => api.saveSettings({ [key]: null }),
+      () => "Setting cleared.",
+    );
+  }
+
   const enrich = status?.enrichment;
   const lib = status?.library;
 
@@ -76,13 +107,60 @@ export default function Settings() {
       </div>
 
       <div className="settings-card">
+        <h3>API keys</h3>
+        <p className="hint">
+          Stored locally in the app's database — no restart needed. A value from <code>.env</code>{" "}
+          is used as a fallback when a field is unset here.
+        </p>
+        {SETTING_FIELDS.map(([key, label, help]) => {
+          const info = settings?.[key];
+          return (
+            <div className="row" key={key}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
+                <span style={{ minWidth: 110, fontSize: 13 }}>{label}</span>
+                <input
+                  type="text"
+                  style={{ flex: 1 }}
+                  placeholder={
+                    info?.configured
+                      ? `configured (${info.preview}${info.source === "env" ? ", from .env" : ""})`
+                      : help
+                  }
+                  value={drafts[key] ?? ""}
+                  onChange={(e) => setDrafts((d) => ({ ...d, [key]: e.target.value }))}
+                />
+              </label>
+              {info?.source === "settings" && (
+                <button
+                  className="btn secondary"
+                  disabled={busy !== null}
+                  onClick={() => void clearSetting(key)}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          );
+        })}
+        <div className="row">
+          <button
+            className="btn"
+            disabled={busy !== null || !Object.values(drafts).some((v) => v.trim())}
+            onClick={() => void saveSettings()}
+          >
+            {busy === "settings" ? "Saving…" : "Save settings"}
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-card">
         <h3>Steam</h3>
         <p className="hint">
           {status?.config.steamConfigured ? (
             <span className="status-ok">API key and SteamID configured.</span>
           ) : (
             <span className="status-warn">
-              Set STEAM_API_KEY and STEAM_ID in .env — get a key at{" "}
+              Enter your Steam API key and SteamID64 under API keys above — get a key at{" "}
               <a href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noreferrer">
                 steamcommunity.com/dev/apikey
               </a>
@@ -168,11 +246,11 @@ export default function Settings() {
           takes a while, and you can close the tab and come back.{" "}
           {!status?.config.rawgConfigured && (
             <span className="status-warn">
-              RAWG_API_KEY is not set (free at{" "}
+              No RAWG API key set (free at{" "}
               <a href="https://rawg.io/apidocs" target="_blank" rel="noreferrer">
                 rawg.io/apidocs
               </a>
-              ) — ratings will be skipped.
+              , enter it under API keys above) — ratings will be skipped.
             </span>
           )}
         </p>

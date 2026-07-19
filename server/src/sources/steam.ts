@@ -1,4 +1,4 @@
-import { env } from "../env.js";
+import { getSetting } from "../lib/settings.js";
 
 export interface SteamOwnedGame {
   appid: number;
@@ -7,12 +7,14 @@ export interface SteamOwnedGame {
 }
 
 export async function fetchOwnedGames(): Promise<SteamOwnedGame[]> {
-  if (!env.steamApiKey || !env.steamId) {
-    throw new Error("STEAM_API_KEY and STEAM_ID must be set in .env");
+  const apiKey = getSetting("steam_api_key");
+  const steamId = getSetting("steam_id");
+  if (!apiKey || !steamId) {
+    throw new Error("Add your Steam API key and SteamID64 in Settings (or .env) first");
   }
   const url = new URL("https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/");
-  url.searchParams.set("key", env.steamApiKey);
-  url.searchParams.set("steamid", env.steamId);
+  url.searchParams.set("key", apiKey);
+  url.searchParams.set("steamid", steamId);
   url.searchParams.set("include_appinfo", "1");
   url.searchParams.set("include_played_free_games", "1");
   url.searchParams.set("format", "json");

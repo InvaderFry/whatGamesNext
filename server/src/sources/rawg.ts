@@ -1,4 +1,4 @@
-import { env } from "../env.js";
+import { getSetting } from "../lib/settings.js";
 import { bestMatch } from "../lib/match.js";
 
 export interface RawgGameData {
@@ -27,9 +27,10 @@ interface RawgSearchResult {
  * or null when nothing matches confidently.
  */
 export async function lookupRawg(title: string): Promise<RawgGameData | null> {
-  if (!env.rawgApiKey) throw new Error("RAWG_API_KEY must be set in .env");
+  const apiKey = getSetting("rawg_api_key");
+  if (!apiKey) throw new Error("Add your RAWG API key in Settings (or .env) first");
   const url = new URL("https://api.rawg.io/api/games");
-  url.searchParams.set("key", env.rawgApiKey);
+  url.searchParams.set("key", apiKey);
   url.searchParams.set("search", title);
   url.searchParams.set("page_size", "5");
   url.searchParams.set("search_precise", "true");
