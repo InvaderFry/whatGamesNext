@@ -1,53 +1,20 @@
 import { Router } from "express";
 import { getDb, type GameRow } from "../db.js";
-import { listGames, type GameFilters } from "../lib/library.js";
+import { listGames, countGames, type GameFilters, type SortKey } from "../lib/library.js";
 import { effectiveRating } from "../lib/score.js";
 
 export const libraryRouter = Router();
 
-type SortKey =
-  | "title"
-  | "rating"
-  | "metacritic"
-  | "length"
-  | "difficulty"
-  | "playtime"
-  | "release"
-  | "steam_reviews";
-
-function sortGames(rows: GameRow[], sort: SortKey, dir: "asc" | "desc"): GameRow[] {
-  const mul = dir === "asc" ? 1 : -1;
-  const key = (g: GameRow): number | string | null => {
-    switch (sort) {
-      case "title":
-        return g.title.toLowerCase();
-      case "rating":
-        return effectiveRating(g);
-      case "metacritic":
-        return g.metacritic;
-      case "length":
-        return g.hltb_main;
-      case "difficulty":
-        return g.difficulty_override ?? g.difficulty;
-      case "playtime":
-        return g.playtime_minutes;
-      case "release":
-        return g.release_date;
-      case "steam_reviews":
-        return g.steam_review_pct;
-    }
-  };
-  return [...rows].sort((a, b) => {
-    const ka = key(a);
-    const kb = key(b);
-    if (ka == null && kb == null) return 0;
-    if (ka == null) return 1; // nulls always last
-    if (kb == null) return -1;
-    if (ka < kb) return -mul;
-    if (ka > kb) return mul;
-    return 0;
-  });
-}
+const SORT_KEYS: SortKey[] = [
+  "title",
+  "rating",
+  "metacritic",
+  "length",
+  "difficulty",
+  "playtime",
+  "release",
+  "steam_reviews",
+];
 
 function toApi(g: GameRow) {
   return {
@@ -76,11 +43,15 @@ libraryRouter.get("/games", (req, res) => {
     minRating: num(q.minRating),
     includeHidden: q.includeHidden === "1",
   };
-  const sort = (typeof q.sort === "string" ? q.sort : "title") as SortKey;
+  const sort = SORT_KEYS.includes(q.sort as SortKey) ? (q.sort as SortKey) : "title";
   const dir =
     q.dir === "asc" ? "asc" : q.dir === "desc" ? "desc" : sort === "title" ? "asc" : "desc";
-  const rows = sortGames(listGames(filters), sort, dir);
-  res.json({ count: rows.length, games: rows.map(toApi) });
+  const limit = num(q.limit);
+  const offset = num(q.offset);
+  const rows = listGames(filters, { sort, dir, limit, offset });
+  // count is the total matching the filters, so paginated clients can page.
+  const count = limit != null ? countGames(filters) : rows.length;
+  res.json({ count, games: rows.map(toApi) });
 });
 
 libraryRouter.get("/games/facets", (_req, res) => {

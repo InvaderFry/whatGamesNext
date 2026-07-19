@@ -99,6 +99,13 @@ describe("GET /api/games", () => {
     expect(bySearch.body.games[0].title).toBe("Hollow Knight");
   });
 
+  it("paginates with limit/offset while count reports the total", async () => {
+    seed(Array.from({ length: 5 }, (_, i) => ({ title: `Game ${i}`, metacritic: 70 + i })));
+    const res = await request(app).get("/api/games?sort=metacritic&limit=2&offset=1");
+    expect(res.body.count).toBe(5);
+    expect(res.body.games.map((g: { title: string }) => g.title)).toEqual(["Game 3", "Game 2"]);
+  });
+
   it("sorts by metacritic descending with nulls last", async () => {
     seed([
       { title: "Unrated" },

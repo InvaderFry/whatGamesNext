@@ -150,8 +150,35 @@ export interface GameFilters {
   search?: string;
 }
 
-export function listGames(filters: GameFilters = {}): GameRow[] {
-  const db = getDb();
+export type SortKey =
+  | "title"
+  | "rating"
+  | "metacritic"
+  | "length"
+  | "difficulty"
+  | "playtime"
+  | "release"
+  | "steam_reviews";
+
+const SORT_SQL: Record<SortKey, string> = {
+  title: "lower(title)",
+  rating: "COALESCE(metacritic, rawg_rating * 20, steam_review_pct)",
+  metacritic: "metacritic",
+  length: "hltb_main",
+  difficulty: "COALESCE(difficulty_override, difficulty)",
+  playtime: "playtime_minutes",
+  release: "release_date",
+  steam_reviews: "steam_review_pct",
+};
+
+export interface ListOptions {
+  sort?: SortKey;
+  dir?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}
+
+function buildWhere(filters: GameFilters): { clause: string; params: Record<string, unknown> } {
   const where: string[] = [];
   const params: Record<string, unknown> = {};
 
@@ -190,20 +217,48 @@ export function listGames(filters: GameFilters = {}): GameRow[] {
     params.minRating = filters.minRating;
   }
 
-  let rows = db
-    .prepare(`SELECT * FROM games ${where.length ? "WHERE " + where.join(" AND ") : ""}`)
-    .all(params) as GameRow[];
-
-  // Genre/tag filters need JSON parsing, so apply in JS.
+  // genres/tags are JSON arrays; match case-insensitively via json_each.
   if (filters.genre) {
-    const g = filters.genre.toLowerCase();
-    rows = rows.filter((r) =>
-      (JSON.parse(r.genres) as string[]).some((x) => x.toLowerCase() === g),
+    where.push(
+      "EXISTS (SELECT 1 FROM json_each(games.genres) WHERE lower(json_each.value) = lower(@genre))",
     );
+    params.genre = filters.genre;
   }
   if (filters.tag) {
-    const t = filters.tag.toLowerCase();
-    rows = rows.filter((r) => (JSON.parse(r.tags) as string[]).some((x) => x.toLowerCase() === t));
+    where.push(
+      "EXISTS (SELECT 1 FROM json_each(games.tags) WHERE lower(json_each.value) = lower(@tag))",
+    );
+    params.tag = filters.tag;
   }
-  return rows;
+
+  return { clause: where.length ? "WHERE " + where.join(" AND ") : "", params };
+}
+
+export function listGames(filters: GameFilters = {}, options: ListOptions = {}): GameRow[] {
+  const { clause, params } = buildWhere(filters);
+  let sql = `SELECT * FROM games ${clause}`;
+  if (options.sort) {
+    const key = SORT_SQL[options.sort];
+    const dir = options.dir === "asc" ? "ASC" : "DESC";
+    // Nulls always sort last, regardless of direction.
+    sql += ` ORDER BY (${key} IS NULL), ${key} ${dir}, id ASC`;
+  }
+  if (options.limit != null) {
+    sql += " LIMIT @limit";
+    params.limit = options.limit;
+    if (options.offset != null) {
+      sql += " OFFSET @offset";
+      params.offset = options.offset;
+    }
+  }
+  return getDb().prepare(sql).all(params) as GameRow[];
+}
+
+/** Number of games matching the filters (ignores limit/offset). */
+export function countGames(filters: GameFilters = {}): number {
+  const { clause, params } = buildWhere(filters);
+  const row = getDb().prepare(`SELECT COUNT(*) AS n FROM games ${clause}`).get(params) as {
+    n: number;
+  };
+  return row.n;
 }
