@@ -57,11 +57,9 @@ syncRouter.post("/sync/import", (req, res) => {
     return res.status(400).json({ error: `store must be one of: ${IMPORT_STORES.join(", ")}` });
   }
   if (!body.text || typeof body.text !== "string") {
-    return res
-      .status(400)
-      .json({
-        error: "body must be { store, text } — titles one per line, or CSV with a title column",
-      });
+    return res.status(400).json({
+      error: "body must be { store, text } — titles one per line, or CSV with a title column",
+    });
   }
   const games = parseImportText(body.text);
   const result = upsertImportedGames(games, body.store as ImportStore);
