@@ -15,6 +15,8 @@ export default function Settings() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [manualText, setManualText] = useState("");
+  const [importText, setImportText] = useState("");
+  const [importStore, setImportStore] = useState("gog");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -91,8 +93,8 @@ export default function Settings() {
         <h3>Library</h3>
         {lib && (
           <p className="hint">
-            {lib.total} games total — {lib.steam} on Steam, {lib.epic} on Epic. {lib.enriched}{" "}
-            enriched
+            {lib.total} games total — {lib.steam} on Steam, {lib.epic} on Epic
+            {lib.other > 0 && `, ${lib.other} elsewhere`}. {lib.enriched} enriched
             {lib.enrich_failed > 0 && (
               <span className="status-warn">, {lib.enrich_failed} failed</span>
             )}
@@ -234,6 +236,48 @@ export default function Settings() {
             }
           >
             Import pasted titles
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-card">
+        <h3>Other stores</h3>
+        <p className="hint">
+          GOG, itch.io, Humble, physical — paste titles one per line, or CSV with a{" "}
+          <code>title</code> column (and optional <code>playtime_hours</code>). Games you already
+          own on Steam/Epic are matched by title and not duplicated.
+        </p>
+        <div className="row">
+          <select value={importStore} onChange={(e) => setImportStore(e.target.value)}>
+            <option value="gog">GOG</option>
+            <option value="itch">itch.io</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div className="row">
+          <textarea
+            rows={5}
+            placeholder={
+              "The Witcher 3\nDisco Elysium\n\nor:\ntitle,playtime_hours\nCyberpunk 2077,42"
+            }
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+          />
+        </div>
+        <div className="row">
+          <button
+            className="btn secondary"
+            disabled={busy !== null || !importText.trim()}
+            onClick={() =>
+              void run(
+                "import",
+                () => api.syncImport(importStore, importText),
+                (r: { fetched: number; added: number }) =>
+                  `Imported ${r.fetched} titles, ${r.added} new.`,
+              )
+            }
+          >
+            Import titles
           </button>
         </div>
       </div>

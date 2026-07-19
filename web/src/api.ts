@@ -1,7 +1,7 @@
 export interface Game {
   id: number;
   title: string;
-  store: "steam" | "epic" | "both";
+  store: "steam" | "epic" | "both" | "gog" | "itch" | "other";
   steam_appid: number | null;
   playtime_minutes: number;
   metacritic: number | null;
@@ -35,6 +35,7 @@ export interface SyncStatus {
     total: number;
     steam: number;
     epic: number;
+    other: number;
     enriched: number;
     enrich_failed: number;
   };
@@ -109,6 +110,12 @@ export const api = {
   syncEpic: () =>
     request<{ fetched: number; added: number; updated: number }>("/api/sync/epic", {
       method: "POST",
+    }),
+  syncImport: (store: string, text: string) =>
+    request<{ fetched: number; added: number; updated: number }>("/api/sync/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ store, text }),
     }),
   syncEpicManual: (titles: string) =>
     request<{ fetched: number; added: number; updated: number }>("/api/sync/epic/manual", {

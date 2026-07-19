@@ -219,6 +219,33 @@ describe("sync routes", () => {
     expect(res.status).toBe(400);
   });
 
+  it("POST /api/sync/import adds CSV titles under the chosen store without duplicating", async () => {
+    seed([{ title: "Portal 2" }]);
+    const res = await request(app)
+      .post("/api/sync/import")
+      .send({ store: "gog", text: "title,playtime_hours\nThe Witcher 3,50\nPortal 2,1" });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ source: "gog", fetched: 2, added: 1, updated: 1 });
+
+    const games = await request(app).get("/api/games?store=gog");
+    expect(games.body.games).toHaveLength(1);
+    expect(games.body.games[0]).toMatchObject({
+      title: "The Witcher 3",
+      store: "gog",
+      playtime_minutes: 3000,
+    });
+    // The existing Steam copy keeps its store.
+    const portal = (await request(app).get("/api/games?search=portal")).body.games[0];
+    expect(portal.store).toBe("steam");
+  });
+
+  it("POST /api/sync/import rejects bad stores and missing text", async () => {
+    expect(
+      (await request(app).post("/api/sync/import").send({ store: "amazon", text: "x" })).status,
+    ).toBe(400);
+    expect((await request(app).post("/api/sync/import").send({ store: "gog" })).status).toBe(400);
+  });
+
   it("GET /api/sync/status reports library counts and enrichment state", async () => {
     seed([{ title: "A" }, { title: "B", store: "epic" }]);
     const res = await request(app).get("/api/sync/status");

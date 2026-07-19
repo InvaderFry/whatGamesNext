@@ -8,7 +8,14 @@ function ratingClass(r: number | null): string {
   return "rating-bad";
 }
 
-const STORE_LABEL = { steam: "Steam", epic: "Epic", both: "Steam + Epic" } as const;
+const STORE_LABEL = {
+  steam: "Steam",
+  epic: "Epic",
+  both: "Steam + Epic",
+  gog: "GOG",
+  itch: "itch.io",
+  other: "Other",
+} as const;
 
 export default function GameCard({
   game: initial,

@@ -2,6 +2,7 @@ import { getDb, type GameRow } from "../db.js";
 import { normalizeTitle } from "./match.js";
 import { steamCoverUrl, type SteamOwnedGame } from "../sources/steam.js";
 import type { EpicGame } from "../sources/epic.js";
+import type { ImportedGame } from "./import.js";
 
 /**
  * Upsert helpers. Games are keyed by normalized title so the same game owned
@@ -90,6 +91,52 @@ export function upsertEpicGames(games: EpicGame[]): { added: number; updated: nu
   return { added, updated };
 }
 
+export type ImportStore = "gog" | "itch" | "other";
+
+/**
+ * Upsert games pasted/imported from stores without an API integration.
+ * A title already in the library (from any store) is left on its existing
+ * store — only last_synced and a missing playtime are filled in.
+ */
+export function upsertImportedGames(
+  games: ImportedGame[],
+  store: ImportStore,
+): { added: number; updated: number } {
+  const db = getDb();
+  const now = new Date().toISOString();
+  let added = 0;
+  let updated = 0;
+  const find = db.prepare("SELECT id, playtime_minutes FROM games WHERE normalized_title = ?");
+  const insert = db.prepare(`
+    INSERT INTO games (title, normalized_title, store, playtime_minutes, last_synced)
+    VALUES (@title, @norm, @store, @playtime, @now)
+  `);
+  const update = db.prepare(`
+    UPDATE games SET playtime_minutes = @playtime, last_synced = @now WHERE id = @id
+  `);
+
+  const tx = db.transaction(() => {
+    for (const g of games) {
+      const norm = normalizeTitle(g.title);
+      if (!norm) continue;
+      const existing = find.get(norm) as { id: number; playtime_minutes: number } | undefined;
+      if (existing) {
+        update.run({
+          id: existing.id,
+          playtime: existing.playtime_minutes || (g.playtimeMinutes ?? 0),
+          now,
+        });
+        updated++;
+      } else {
+        insert.run({ title: g.title, norm, store, playtime: g.playtimeMinutes ?? 0, now });
+        added++;
+      }
+    }
+  });
+  tx();
+  return { added, updated };
+}
+
 export interface GameFilters {
   store?: string;
   status?: string;
@@ -110,7 +157,12 @@ export function listGames(filters: GameFilters = {}): GameRow[] {
 
   if (!filters.includeHidden) where.push("hidden = 0");
   if (filters.store) {
-    where.push("(store = @store OR store = 'both')");
+    // 'both' means steam+epic, so it matches either of those filters only.
+    if (filters.store === "steam" || filters.store === "epic") {
+      where.push("(store = @store OR store = 'both')");
+    } else {
+      where.push("store = @store");
+    }
     params.store = filters.store;
   }
   if (filters.status) {

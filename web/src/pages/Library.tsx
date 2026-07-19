@@ -102,6 +102,9 @@ export default function Library() {
           <option value="">All stores</option>
           <option value="steam">Steam</option>
           <option value="epic">Epic</option>
+          <option value="gog">GOG</option>
+          <option value="itch">itch.io</option>
+          <option value="other">Other</option>
         </select>
         <select value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">Any status</option>

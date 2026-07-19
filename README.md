@@ -1,6 +1,7 @@
 # whatGamesNext
 
-Decide what game to play next from your **Steam** and **Epic** libraries.
+Decide what game to play next from your **Steam** and **Epic** libraries — plus anything you paste
+in from GOG, itch.io, or elsewhere.
 
 A local, cross-platform web app (Windows / macOS / Linux — anywhere Node runs). It imports your
 libraries, enriches every game with ratings, completion times, and an estimated difficulty, then
@@ -19,11 +20,16 @@ The **Library** page lets you sort by rating / Metacritic / Steam review % / len
 playtime / release date, and filter by store, status, length bucket, genre, and tag. Each game can
 be marked playing / finished / abandoned, hidden, or given a manual difficulty override.
 
+The **Stats** page tracks your play history: backlog size and hours, games finished per year
+(finish dates are recorded when you mark a game finished), total playtime, and abandonment rate.
+
 ## Data sources
 
 - **Steam**: official Web API (owned games + playtime) and the public review-summary endpoint.
 - **Epic**: the community [legendary](https://github.com/derrod/legendary) CLI, or manual paste
   (Epic has no official library API).
+- **Other stores** (GOG, itch.io, Humble, physical…): paste titles in Settings → Other stores —
+  one per line, or CSV with `title` and optional `playtime_hours` columns.
 - **Ratings**: [RAWG](https://rawg.io/apidocs) — includes Metacritic scores, user ratings, genres, tags.
 - **Length**: [HowLongToBeat](https://howlongtobeat.com) (unofficial — fails soft if it changes).
 - **Difficulty**: no public source exists, so it's estimated from genres/tags (souls-like, casual,
