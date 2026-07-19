@@ -1,18 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type SyncStatus } from "../api";
+import { api, type SettingsMap, type SyncStatus } from "../api";
+
+const SETTING_FIELDS: [keyof SettingsMap, string, string][] = [
+  ["steam_api_key", "Steam API key", "From steamcommunity.com/dev/apikey"],
+  ["steam_id", "SteamID64", "Your 17-digit SteamID (steamid.io can find it)"],
+  ["rawg_api_key", "RAWG API key", "Free at rawg.io/apidocs — used for ratings"],
+];
 
 export default function Settings() {
   const [status, setStatus] = useState<SyncStatus | null>(null);
+  const [settings, setSettings] = useState<SettingsMap | null>(null);
+  const [drafts, setDrafts] = useState<Partial<Record<keyof SettingsMap, string>>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [manualText, setManualText] = useState("");
+  const [importText, setImportText] = useState("");
+  const [importStore, setImportStore] = useState("gog");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const s = await api.syncStatus();
+      const [s, cfg] = await Promise.all([api.syncStatus(), api.settings()]);
       setStatus(s);
+      setSettings(cfg);
       if (!s.enrichment.running && pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
@@ -48,6 +59,28 @@ export default function Settings() {
     }
   }
 
+  async function saveSettings() {
+    const patch: Partial<Record<keyof SettingsMap, string>> = {};
+    for (const [key, value] of Object.entries(drafts)) {
+      if (value.trim()) patch[key as keyof SettingsMap] = value.trim();
+    }
+    if (!Object.keys(patch).length) return;
+    await run(
+      "settings",
+      () => api.saveSettings(patch),
+      () => "Settings saved.",
+    );
+    setDrafts({});
+  }
+
+  async function clearSetting(key: keyof SettingsMap) {
+    await run(
+      "settings",
+      () => api.saveSettings({ [key]: null }),
+      () => "Setting cleared.",
+    );
+  }
+
   const enrich = status?.enrichment;
   const lib = status?.library;
 
@@ -60,13 +93,66 @@ export default function Settings() {
         <h3>Library</h3>
         {lib && (
           <p className="hint">
-            {lib.total} games total — {lib.steam} on Steam, {lib.epic} on Epic. {lib.enriched} enriched
-            {lib.enrich_failed > 0 && <span className="status-warn">, {lib.enrich_failed} failed</span>}.
+            {lib.total} games total — {lib.steam} on Steam, {lib.epic} on Epic
+            {lib.other > 0 && `, ${lib.other} elsewhere`}. {lib.enriched} enriched
+            {lib.enrich_failed > 0 && (
+              <span className="status-warn">, {lib.enrich_failed} failed</span>
+            )}
+            .
           </p>
         )}
         {status?.config.demo && (
-          <p className="hint status-warn">Demo mode is on (DEMO=1) — the library is seeded with sample games.</p>
+          <p className="hint status-warn">
+            Demo mode is on (DEMO=1) — the library is seeded with sample games.
+          </p>
         )}
+      </div>
+
+      <div className="settings-card">
+        <h3>API keys</h3>
+        <p className="hint">
+          Stored locally in the app's database — no restart needed. A value from <code>.env</code>{" "}
+          is used as a fallback when a field is unset here.
+        </p>
+        {SETTING_FIELDS.map(([key, label, help]) => {
+          const info = settings?.[key];
+          return (
+            <div className="row" key={key}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
+                <span style={{ minWidth: 110, fontSize: 13 }}>{label}</span>
+                <input
+                  type="text"
+                  style={{ flex: 1 }}
+                  placeholder={
+                    info?.configured
+                      ? `configured (${info.preview}${info.source === "env" ? ", from .env" : ""})`
+                      : help
+                  }
+                  value={drafts[key] ?? ""}
+                  onChange={(e) => setDrafts((d) => ({ ...d, [key]: e.target.value }))}
+                />
+              </label>
+              {info?.source === "settings" && (
+                <button
+                  className="btn secondary"
+                  disabled={busy !== null}
+                  onClick={() => void clearSetting(key)}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          );
+        })}
+        <div className="row">
+          <button
+            className="btn"
+            disabled={busy !== null || !Object.values(drafts).some((v) => v.trim())}
+            onClick={() => void saveSettings()}
+          >
+            {busy === "settings" ? "Saving…" : "Save settings"}
+          </button>
+        </div>
       </div>
 
       <div className="settings-card">
@@ -76,7 +162,7 @@ export default function Settings() {
             <span className="status-ok">API key and SteamID configured.</span>
           ) : (
             <span className="status-warn">
-              Set STEAM_API_KEY and STEAM_ID in .env — get a key at{" "}
+              Enter your Steam API key and SteamID64 under API keys above — get a key at{" "}
               <a href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noreferrer">
                 steamcommunity.com/dev/apikey
               </a>
@@ -89,8 +175,12 @@ export default function Settings() {
             className="btn"
             disabled={busy !== null || !status?.config.steamConfigured}
             onClick={() =>
-              void run("steam", api.syncSteam, (r: { fetched: number; added: number }) =>
-                `Steam: fetched ${r.fetched} games, ${r.added} new.`)
+              void run(
+                "steam",
+                api.syncSteam,
+                (r: { fetched: number; added: number }) =>
+                  `Steam: fetched ${r.fetched} games, ${r.added} new.`,
+              )
             }
           >
             {busy === "steam" ? "Syncing…" : "Sync Steam library"}
@@ -105,16 +195,20 @@ export default function Settings() {
           <a href="https://github.com/derrod/legendary" target="_blank" rel="noreferrer">
             legendary
           </a>{" "}
-          CLI (<code>pip install legendary-gl</code>, then <code>legendary auth</code>). If you don't want to
-          install it, paste your game titles below instead, one per line.
+          CLI (<code>pip install legendary-gl</code>, then <code>legendary auth</code>). If you
+          don't want to install it, paste your game titles below instead, one per line.
         </p>
         <div className="row">
           <button
             className="btn"
             disabled={busy !== null}
             onClick={() =>
-              void run("epic", api.syncEpic, (r: { fetched: number; added: number }) =>
-                `Epic: fetched ${r.fetched} games, ${r.added} new.`)
+              void run(
+                "epic",
+                api.syncEpic,
+                (r: { fetched: number; added: number }) =>
+                  `Epic: fetched ${r.fetched} games, ${r.added} new.`,
+              )
             }
           >
             {busy === "epic" ? "Syncing…" : "Sync via legendary"}
@@ -123,6 +217,7 @@ export default function Settings() {
         <div className="row">
           <textarea
             rows={5}
+            aria-label="Epic game titles, one per line"
             placeholder={"Alan Wake 2\nControl\nOuter Wilds"}
             value={manualText}
             onChange={(e) => setManualText(e.target.value)}
@@ -133,8 +228,12 @@ export default function Settings() {
             className="btn secondary"
             disabled={busy !== null || !manualText.trim()}
             onClick={() =>
-              void run("epic-manual", () => api.syncEpicManual(manualText), (r: { fetched: number; added: number }) =>
-                `Imported ${r.fetched} Epic titles, ${r.added} new.`)
+              void run(
+                "epic-manual",
+                () => api.syncEpicManual(manualText),
+                (r: { fetched: number; added: number }) =>
+                  `Imported ${r.fetched} Epic titles, ${r.added} new.`,
+              )
             }
           >
             Import pasted titles
@@ -143,18 +242,65 @@ export default function Settings() {
       </div>
 
       <div className="settings-card">
+        <h3>Other stores</h3>
+        <p className="hint">
+          GOG, itch.io, Humble, physical — paste titles one per line, or CSV with a{" "}
+          <code>title</code> column (and optional <code>playtime_hours</code>). Games you already
+          own on Steam/Epic are matched by title and not duplicated.
+        </p>
+        <div className="row">
+          <select
+            aria-label="Store to import into"
+            value={importStore}
+            onChange={(e) => setImportStore(e.target.value)}
+          >
+            <option value="gog">GOG</option>
+            <option value="itch">itch.io</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div className="row">
+          <textarea
+            rows={5}
+            aria-label="Titles to import, one per line or CSV"
+            placeholder={
+              "The Witcher 3\nDisco Elysium\n\nor:\ntitle,playtime_hours\nCyberpunk 2077,42"
+            }
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+          />
+        </div>
+        <div className="row">
+          <button
+            className="btn secondary"
+            disabled={busy !== null || !importText.trim()}
+            onClick={() =>
+              void run(
+                "import",
+                () => api.syncImport(importStore, importText),
+                (r: { fetched: number; added: number }) =>
+                  `Imported ${r.fetched} titles, ${r.added} new.`,
+              )
+            }
+          >
+            Import titles
+          </button>
+        </div>
+      </div>
+
+      <div className="settings-card">
         <h3>Enrichment</h3>
         <p className="hint">
-          Fills in Metacritic/RAWG ratings, HowLongToBeat lengths, Steam review scores, and estimated
-          difficulty for every synced game. Rate-limited to be polite — a large library takes a while, and you
-          can close the tab and come back.{" "}
+          Fills in Metacritic/RAWG ratings, HowLongToBeat lengths, Steam review scores, and
+          estimated difficulty for every synced game. Rate-limited to be polite — a large library
+          takes a while, and you can close the tab and come back.{" "}
           {!status?.config.rawgConfigured && (
             <span className="status-warn">
-              RAWG_API_KEY is not set (free at{" "}
+              No RAWG API key set (free at{" "}
               <a href="https://rawg.io/apidocs" target="_blank" rel="noreferrer">
                 rawg.io/apidocs
               </a>
-              ) — ratings will be skipped.
+              , enter it under API keys above) — ratings will be skipped.
             </span>
           )}
         </p>
@@ -174,8 +320,11 @@ export default function Settings() {
               className="btn secondary"
               disabled={busy !== null || enrich?.running}
               onClick={() => {
-                void run("retry", api.retryFailedEnrich, (r: { requeued: number }) =>
-                  `Requeued ${r.requeued} failed games.`);
+                void run(
+                  "retry",
+                  api.retryFailedEnrich,
+                  (r: { requeued: number }) => `Requeued ${r.requeued} failed games.`,
+                );
                 startPolling();
               }}
             >
@@ -190,9 +339,19 @@ export default function Settings() {
               {enrich.current && <> — currently: {enrich.current}</>}
             </p>
             <div className="progress-bar">
-              <div style={{ width: `${((enrich.done + enrich.failed) / Math.max(1, enrich.total)) * 100}%` }} />
+              <div
+                style={{
+                  width: `${((enrich.done + enrich.failed) / Math.max(1, enrich.total)) * 100}%`,
+                }}
+              />
             </div>
           </>
+        )}
+        {enrich?.hltbUnavailable && (
+          <p className="hint status-warn">
+            HowLongToBeat looks unreachable right now — game lengths are being skipped. They'll be
+            filled in if you re-run enrichment once it's back.
+          </p>
         )}
         {enrich?.lastError && <p className="hint status-warn">Last error: {enrich.lastError}</p>}
       </div>

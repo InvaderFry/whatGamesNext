@@ -47,30 +47,50 @@ function recencyScore(releaseDate: string | null, now = new Date()): number {
   return Math.max(0, 1 - years / 25); // 25-year-old game → 0
 }
 
+export type ScoreBreakdown = Record<keyof Weights, number>;
+
+function componentScores(g: GameRow, budgetHours: number | null): ScoreBreakdown {
+  const rating = effectiveRating(g);
+  return {
+    rating: rating != null ? rating / 100 : 0.4,
+    unplayed: unplayedScore(g.playtime_minutes),
+    lengthFit: lengthFitScore(g.hltb_main, budgetHours),
+    recency: recencyScore(g.release_date),
+  };
+}
+
 export function compositeScore(
   g: GameRow,
   weights: Weights = DEFAULT_WEIGHTS,
   budgetHours: number | null = null,
 ): number {
-  const rating = effectiveRating(g);
-  const parts = [
-    { w: weights.rating, v: rating != null ? rating / 100 : 0.4 },
-    { w: weights.unplayed, v: unplayedScore(g.playtime_minutes) },
-    { w: weights.lengthFit, v: lengthFitScore(g.hltb_main, budgetHours) },
-    { w: weights.recency, v: recencyScore(g.release_date) },
-  ];
-  const totalWeight = parts.reduce((a, p) => a + p.w, 0);
+  const scores = componentScores(g, budgetHours);
+  const keys = Object.keys(scores) as (keyof Weights)[];
+  const totalWeight = keys.reduce((a, k) => a + weights[k], 0);
   if (totalWeight === 0) return 0;
-  return parts.reduce((a, p) => a + p.w * p.v, 0) / totalWeight;
+  return keys.reduce((a, k) => a + weights[k] * scores[k], 0) / totalWeight;
+}
+
+/**
+ * Each component's share of the final composite score (fractions summing to 1),
+ * so the UI can explain what drove a recommendation.
+ */
+export function scoreBreakdown(
+  g: GameRow,
+  weights: Weights = DEFAULT_WEIGHTS,
+  budgetHours: number | null = null,
+): ScoreBreakdown | null {
+  const scores = componentScores(g, budgetHours);
+  const keys = Object.keys(scores) as (keyof Weights)[];
+  const total = keys.reduce((a, k) => a + weights[k] * scores[k], 0);
+  if (total <= 0) return null;
+  const out = {} as ScoreBreakdown;
+  for (const k of keys) out[k] = Math.round(((weights[k] * scores[k]) / total) * 100) / 100;
+  return out;
 }
 
 export type RecommendMode =
-  | "play-next"
-  | "quick-wins"
-  | "backlog-shame"
-  | "hidden-gems"
-  | "classics-missed"
-  | "surprise";
+  "play-next" | "quick-wins" | "backlog-shame" | "hidden-gems" | "classics-missed" | "surprise";
 
 export interface RecommendOptions {
   budgetHours?: number | null;
@@ -81,6 +101,7 @@ interface Scored {
   game: GameRow;
   score: number;
   reason: string;
+  breakdown?: ScoreBreakdown | null;
 }
 
 function playable(games: GameRow[]): GameRow[] {
@@ -103,12 +124,15 @@ export function recommend(
           game: g,
           score: compositeScore(g, weights, budget),
           reason: describeComposite(g, budget),
+          breakdown: scoreBreakdown(g, weights, budget),
         }))
         .sort((a, b) => b.score - a.score);
 
     case "quick-wins":
       return pool
-        .filter((g) => g.hltb_main != null && g.hltb_main <= (budget ?? 12) && g.playtime_minutes < 120)
+        .filter(
+          (g) => g.hltb_main != null && g.hltb_main <= (budget ?? 12) && g.playtime_minutes < 120,
+        )
         .map((g) => {
           const rating = effectiveRating(g) ?? 40;
           return {
@@ -158,7 +182,8 @@ export function recommend(
           const rating = effectiveRating(g);
           if (rating == null || rating < 85 || g.playtime_minutes >= 120) return false;
           if (!g.release_date) return false;
-          const age = (Date.now() - new Date(g.release_date).getTime()) / (365.25 * 24 * 3600 * 1000);
+          const age =
+            (Date.now() - new Date(g.release_date).getTime()) / (365.25 * 24 * 3600 * 1000);
           return age >= 8;
         })
         .map((g) => ({
@@ -188,7 +213,11 @@ function describeComposite(g: GameRow, budget: number | null): string {
   const rating = effectiveRating(g);
   if (rating != null) bits.push(`rated ${Math.round(rating)}`);
   if (g.hltb_main != null) {
-    bits.push(budget && g.hltb_main <= budget ? `${g.hltb_main}h — fits your budget` : `${g.hltb_main}h main story`);
+    bits.push(
+      budget && g.hltb_main <= budget
+        ? `${g.hltb_main}h — fits your budget`
+        : `${g.hltb_main}h main story`,
+    );
   }
   if (g.playtime_minutes === 0) bits.push("never played");
   else if (g.playtime_minutes < 120) bits.push(`only ${formatMinutes(g.playtime_minutes)} played`);

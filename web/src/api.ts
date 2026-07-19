@@ -1,7 +1,7 @@
 export interface Game {
   id: number;
   title: string;
-  store: "steam" | "epic" | "both";
+  store: "steam" | "epic" | "both" | "gog" | "itch" | "other";
   steam_appid: number | null;
   playtime_minutes: number;
   metacritic: number | null;
@@ -24,9 +24,17 @@ export interface Game {
   enrich_status: "pending" | "done" | "failed";
 }
 
+export interface ScoreBreakdown {
+  rating: number;
+  unplayed: number;
+  lengthFit: number;
+  recency: number;
+}
+
 export interface Recommendation {
   score: number;
   reason: string;
+  breakdown: ScoreBreakdown | null;
   game: Game;
 }
 
@@ -35,6 +43,7 @@ export interface SyncStatus {
     total: number;
     steam: number;
     epic: number;
+    other: number;
     enriched: number;
     enrich_failed: number;
   };
@@ -45,6 +54,7 @@ export interface SyncStatus {
     failed: number;
     current: string | null;
     lastError: string | null;
+    hltbUnavailable: boolean;
   };
   config: {
     steamConfigured: boolean;
@@ -57,6 +67,24 @@ export interface Facets {
   genres: string[];
   tags: string[];
 }
+
+export interface Stats {
+  statusCounts: Record<"unplayed" | "playing" | "finished" | "abandoned", number>;
+  finishedByYear: { year: string; n: number }[];
+  untrackedFinishes: number;
+  backlog: { games: number; knownHours: number; unknownLength: number };
+  totalPlaytimeHours: number;
+  abandonmentRate: number | null;
+  recentFinishes: { id: number; title: string; finished_at: string }[];
+}
+
+export interface SettingInfo {
+  configured: boolean;
+  source: "settings" | "env" | null;
+  preview: string | null;
+}
+
+export type SettingsMap = Record<"steam_api_key" | "steam_id" | "rawg_api_key", SettingInfo>;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -71,7 +99,10 @@ export const api = {
   games: (params: URLSearchParams) =>
     request<{ count: number; games: Game[] }>(`/api/games?${params}`),
   facets: () => request<Facets>("/api/games/facets"),
-  patchGame: (id: number, patch: Partial<{ status: string; hidden: boolean; difficulty_override: number | null }>) =>
+  patchGame: (
+    id: number,
+    patch: Partial<{ status: string; hidden: boolean; difficulty_override: number | null }>,
+  ) =>
     request<Game>(`/api/games/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -80,16 +111,37 @@ export const api = {
   recommend: (params: URLSearchParams) =>
     request<{ mode: string; count: number; results: Recommendation[] }>(`/api/recommend?${params}`),
   syncStatus: () => request<SyncStatus>("/api/sync/status"),
-  syncSteam: () => request<{ fetched: number; added: number; updated: number }>("/api/sync/steam", { method: "POST" }),
-  syncEpic: () => request<{ fetched: number; added: number; updated: number }>("/api/sync/epic", { method: "POST" }),
+  syncSteam: () =>
+    request<{ fetched: number; added: number; updated: number }>("/api/sync/steam", {
+      method: "POST",
+    }),
+  syncEpic: () =>
+    request<{ fetched: number; added: number; updated: number }>("/api/sync/epic", {
+      method: "POST",
+    }),
+  syncImport: (store: string, text: string) =>
+    request<{ fetched: number; added: number; updated: number }>("/api/sync/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ store, text }),
+    }),
   syncEpicManual: (titles: string) =>
     request<{ fetched: number; added: number; updated: number }>("/api/sync/epic/manual", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ titles }),
     }),
+  stats: () => request<Stats>("/api/stats"),
+  settings: () => request<SettingsMap>("/api/settings"),
+  saveSettings: (patch: Partial<Record<keyof SettingsMap, string | null>>) =>
+    request<SettingsMap>("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }),
   startEnrich: () => request<{ started: boolean }>("/api/sync/enrich", { method: "POST" }),
-  retryFailedEnrich: () => request<{ requeued: number }>("/api/sync/enrich/retry-failed", { method: "POST" }),
+  retryFailedEnrich: () =>
+    request<{ requeued: number }>("/api/sync/enrich/retry-failed", { method: "POST" }),
 };
 
 export function formatPlaytime(minutes: number): string {

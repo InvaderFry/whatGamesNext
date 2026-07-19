@@ -62,6 +62,7 @@ recommendRouter.get("/recommend", (req, res) => {
     results: results.map((r) => ({
       score: Math.round(r.score * 1000) / 1000,
       reason: r.reason,
+      breakdown: r.breakdown ?? null,
       game: toApi(r.game),
     })),
   });

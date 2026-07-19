@@ -6,8 +6,19 @@
 // Roman numerals commonly used in sequel titles. "i" and "x" are excluded —
 // they are too often real words or letters (e.g. Mega Man X).
 const ROMAN: Record<string, string> = {
-  ii: "2", iii: "3", iv: "4", v: "5", vi: "6", vii: "7",
-  viii: "8", ix: "9", xi: "11", xii: "12", xiii: "13", xiv: "14", xv: "15",
+  ii: "2",
+  iii: "3",
+  iv: "4",
+  v: "5",
+  vi: "6",
+  vii: "7",
+  viii: "8",
+  ix: "9",
+  xi: "11",
+  xii: "12",
+  xiii: "13",
+  xiv: "14",
+  xv: "15",
 };
 
 const EDITION_SUFFIXES =

@@ -18,6 +18,11 @@ describe("parseLegendaryList", () => {
 describe("parseManualTitles", () => {
   it("splits lines, trims bullets and blanks", () => {
     const text = "Alan Wake 2\n- Control\n• Outer Wilds\n\n  A Short Hike  \n";
-    expect(parseManualTitles(text)).toEqual(["Alan Wake 2", "Control", "Outer Wilds", "A Short Hike"]);
+    expect(parseManualTitles(text)).toEqual([
+      "Alan Wake 2",
+      "Control",
+      "Outer Wilds",
+      "A Short Hike",
+    ]);
   });
 });

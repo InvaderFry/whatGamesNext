@@ -19,7 +19,10 @@ describe("deriveDifficulty", () => {
   });
 
   it("stays within 1-5", () => {
-    const max = deriveDifficulty(["Platformer", "Fighting"], ["Souls-like", "Difficult", "Perma Death", "Bullet Hell"]);
+    const max = deriveDifficulty(
+      ["Platformer", "Fighting"],
+      ["Souls-like", "Difficult", "Perma Death", "Bullet Hell"],
+    );
     expect(max).toBe(5);
     const min = deriveDifficulty(["Casual"], ["Casual", "Relaxing", "Cozy", "Visual Novel"]);
     expect(min).toBe(1);

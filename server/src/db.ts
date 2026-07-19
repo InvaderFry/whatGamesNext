@@ -3,11 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { env } from "./env.js";
 
+export type Store = "steam" | "epic" | "both" | "gog" | "itch" | "other";
+
 export interface GameRow {
   id: number;
   title: string;
   normalized_title: string;
-  store: "steam" | "epic" | "both";
+  store: Store;
   steam_appid: number | null;
   epic_app_name: string | null;
   playtime_minutes: number;
@@ -30,6 +32,8 @@ export interface GameRow {
   enrich_status: "pending" | "done" | "failed";
   enrich_error: string | null;
   last_synced: string | null;
+  status_changed_at: string | null;
+  finished_at: string | null;
 }
 
 let db: Database.Database | null = null;
@@ -43,13 +47,15 @@ export function getDb(): Database.Database {
   return db;
 }
 
+const STORE_CHECK = "store IN ('steam','epic','both','gog','itch','other')";
+
 function migrate(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS games (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
       normalized_title TEXT NOT NULL UNIQUE,
-      store TEXT NOT NULL CHECK (store IN ('steam','epic','both')),
+      store TEXT NOT NULL CHECK (${STORE_CHECK}),
       steam_appid INTEGER,
       epic_app_name TEXT,
       playtime_minutes INTEGER NOT NULL DEFAULT 0,
@@ -73,7 +79,9 @@ function migrate(db: Database.Database) {
       enrich_status TEXT NOT NULL DEFAULT 'pending'
         CHECK (enrich_status IN ('pending','done','failed')),
       enrich_error TEXT,
-      last_synced TEXT
+      last_synced TEXT,
+      status_changed_at TEXT,
+      finished_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_games_store ON games(store);
     CREATE INDEX IF NOT EXISTS idx_games_enrich ON games(enrich_status);
@@ -83,6 +91,31 @@ function migrate(db: Database.Database) {
       value TEXT NOT NULL
     );
   `);
+
+  // Older databases: add columns introduced after the initial schema.
+  const cols = (db.pragma("table_info(games)") as { name: string }[]).map((c) => c.name);
+  if (!cols.includes("status_changed_at"))
+    db.exec("ALTER TABLE games ADD COLUMN status_changed_at TEXT");
+  if (!cols.includes("finished_at")) db.exec("ALTER TABLE games ADD COLUMN finished_at TEXT");
+
+  // Older databases: the store CHECK only allowed steam/epic/both. SQLite can't
+  // alter a CHECK in place, so rebuild the table once when the old constraint
+  // is detected.
+  const schema = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'games'")
+    .get() as { sql: string };
+  if (!schema.sql.includes("'gog'")) {
+    db.exec(`
+      BEGIN;
+      ALTER TABLE games RENAME TO games_old;
+      ${schema.sql.replace(/CHECK\s*\(\s*store IN \([^)]*\)\s*\)/, `CHECK (${STORE_CHECK})`)};
+      INSERT INTO games SELECT * FROM games_old;
+      DROP TABLE games_old;
+      CREATE INDEX IF NOT EXISTS idx_games_store ON games(store);
+      CREATE INDEX IF NOT EXISTS idx_games_enrich ON games(enrich_status);
+      COMMIT;
+    `);
+  }
 }
 
 /** For tests: use an in-memory database. */
