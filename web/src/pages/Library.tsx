@@ -153,7 +153,7 @@ export default function Library() {
       )}
       <div className="grid">
         {(games ?? []).map((g) => (
-          <GameCard key={g.id} game={g} />
+          <GameCard key={g.id} game={g} onChanged={() => void load()} />
         ))}
       </div>
     </>

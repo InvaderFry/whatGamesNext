@@ -21,13 +21,17 @@ export default function GameCard({
 }) {
   const [game, setGame] = useState(initial);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function patch(p: Parameters<typeof api.patchGame>[1]) {
     setBusy(true);
     try {
       const updated = await api.patchGame(game.id, p);
       setGame(updated);
+      setError(null);
       onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed");
     } finally {
       setBusy(false);
     }
@@ -43,6 +47,7 @@ export default function GameCard({
       <div className="body">
         <div className="title">{game.title}</div>
         {reason && <div className="reason">{reason}</div>}
+        {error && <div className="card-error">{error}</div>}
         <div className="badges">
           <span className="badge store">{STORE_LABEL[game.store]}</span>
           {game.effective_rating != null && (
