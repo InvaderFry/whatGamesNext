@@ -1,9 +1,10 @@
 import { useState } from "react";
 import Library from "./pages/Library";
 import Recommend from "./pages/Recommend";
+import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
 
-type Page = "recommend" | "library" | "settings";
+type Page = "recommend" | "library" | "stats" | "settings";
 
 export default function App() {
   const [page, setPage] = useState<Page>("recommend");
@@ -19,6 +20,7 @@ export default function App() {
             [
               ["recommend", "What next?"],
               ["library", "Library"],
+              ["stats", "Stats"],
               ["settings", "Settings"],
             ] as [Page, string][]
           ).map(([key, label]) => (
@@ -31,6 +33,7 @@ export default function App() {
       <main>
         {page === "recommend" && <Recommend />}
         {page === "library" && <Library />}
+        {page === "stats" && <Stats />}
         {page === "settings" && <Settings />}
       </main>
     </>

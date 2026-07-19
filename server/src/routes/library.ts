@@ -122,6 +122,13 @@ libraryRouter.patch("/games/:id", (req, res) => {
     }
     sets.push("status = @status");
     params.status = body.status;
+    if (body.status !== game.status) {
+      sets.push("status_changed_at = @now");
+      params.now = new Date().toISOString();
+      if (body.status === "finished") {
+        sets.push("finished_at = @now");
+      }
+    }
   }
   if (body.hidden !== undefined) {
     sets.push("hidden = @hidden");

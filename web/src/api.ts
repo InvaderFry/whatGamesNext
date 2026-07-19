@@ -58,6 +58,16 @@ export interface Facets {
   tags: string[];
 }
 
+export interface Stats {
+  statusCounts: Record<"unplayed" | "playing" | "finished" | "abandoned", number>;
+  finishedByYear: { year: string; n: number }[];
+  untrackedFinishes: number;
+  backlog: { games: number; knownHours: number; unknownLength: number };
+  totalPlaytimeHours: number;
+  abandonmentRate: number | null;
+  recentFinishes: { id: number; title: string; finished_at: string }[];
+}
+
 export interface SettingInfo {
   configured: boolean;
   source: "settings" | "env" | null;
@@ -105,6 +115,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ titles }),
     }),
+  stats: () => request<Stats>("/api/stats"),
   settings: () => request<SettingsMap>("/api/settings"),
   saveSettings: (patch: Partial<Record<keyof SettingsMap, string | null>>) =>
     request<SettingsMap>("/api/settings", {

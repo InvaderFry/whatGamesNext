@@ -229,6 +229,44 @@ describe("sync routes", () => {
   });
 });
 
+describe("play history and stats", () => {
+  it("records status_changed_at and finished_at on status transitions", async () => {
+    seed([{ title: "Hades" }]);
+    const playing = await request(app).patch("/api/games/1").send({ status: "playing" });
+    expect(playing.body.status_changed_at).toBeTruthy();
+    expect(playing.body.finished_at).toBeNull();
+
+    const finished = await request(app).patch("/api/games/1").send({ status: "finished" });
+    expect(finished.body.finished_at).toBeTruthy();
+
+    // Re-sending the same status must not bump the timestamps.
+    const again = await request(app).patch("/api/games/1").send({ status: "finished" });
+    expect(again.body.finished_at).toBe(finished.body.finished_at);
+    expect(again.body.status_changed_at).toBe(finished.body.status_changed_at);
+  });
+
+  it("GET /api/stats aggregates status counts, backlog, and finishes by year", async () => {
+    seed([
+      { title: "Backlog A", hltb_main: 10 },
+      { title: "Backlog B" },
+      { title: "Old Finish", status: "finished" },
+      { title: "Dropped", status: "abandoned" },
+      { title: "Hidden", hidden: 1 },
+    ]);
+    await request(app).patch("/api/games/2").send({ status: "finished" });
+
+    const res = await request(app).get("/api/stats");
+    expect(res.status).toBe(200);
+    expect(res.body.statusCounts).toMatchObject({ unplayed: 1, finished: 2, abandoned: 1 });
+    expect(res.body.backlog).toMatchObject({ games: 1, knownHours: 10, unknownLength: 0 });
+    expect(res.body.untrackedFinishes).toBe(1);
+    expect(res.body.abandonmentRate).toBe(33);
+    const year = String(new Date().getFullYear());
+    expect(res.body.finishedByYear).toEqual([{ year, n: 1 }]);
+    expect(res.body.recentFinishes.map((g: { title: string }) => g.title)).toEqual(["Backlog B"]);
+  });
+});
+
 describe("settings routes", () => {
   it("saves settings, masks API keys, and reflects them in sync status", async () => {
     const put = await request(app)
