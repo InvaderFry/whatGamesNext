@@ -31,8 +31,9 @@ describe("normalizeTitle", () => {
   });
 
   it("keeps re-releases distinct from the base game", () => {
-    // normalized_title is the library's unique key, so collapsing these would
-    // merge two separate games into one row.
+    // The title is still what matches a game across stores, and the only key a
+    // pasted list has at all, so collapsing these would merge two separate
+    // games into one row.
     expect(normalizeTitle("Persona 5 Royal")).not.toBe(normalizeTitle("Persona 5"));
     expect(normalizeTitle("Dark Souls Remastered")).toBe("dark souls");
   });

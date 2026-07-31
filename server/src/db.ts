@@ -54,12 +54,21 @@ export function getDb(): Database.Database {
 
 const STORE_CHECK = "store IN ('steam','epic','both','gog','itch','other')";
 
-function migrate(db: Database.Database) {
-  db.exec(`
+/**
+ * The current shape of the games table, in one place so a rebuild can recreate
+ * it exactly rather than regex-patching whatever the old database happened to
+ * hold — patches compound badly once there is more than one of them.
+ *
+ * `normalized_title` is deliberately *not* UNIQUE. It used to be, and that
+ * silently merged two genuinely different games that normalize the same — DOOM
+ * (1993/2016), Prey (2006/2017). Rows are matched on a store id first now, and
+ * on the title only where no id exists; see lib/library.ts.
+ */
+const GAMES_DDL = `
     CREATE TABLE IF NOT EXISTS games (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
-      normalized_title TEXT NOT NULL UNIQUE,
+      normalized_title TEXT NOT NULL,
       store TEXT NOT NULL CHECK (${STORE_CHECK}),
       steam_appid INTEGER,
       epic_app_name TEXT,
@@ -91,17 +100,60 @@ function migrate(db: Database.Database) {
       personal_rating INTEGER CHECK (personal_rating IS NULL OR personal_rating BETWEEN 1 AND 10),
       notes TEXT
     );
+`;
+
+/**
+ * Plain indexes, not unique ones. The upserts already refuse to create a second
+ * row for an id they have seen, and a CREATE UNIQUE INDEX that trips over some
+ * legacy database would take the whole app down at startup — a migration should
+ * fail as soft as the scrapers do.
+ */
+const GAMES_INDEXES = `
     CREATE INDEX IF NOT EXISTS idx_games_store ON games(store);
     CREATE INDEX IF NOT EXISTS idx_games_enrich ON games(enrich_status);
+    CREATE INDEX IF NOT EXISTS idx_games_norm ON games(normalized_title);
+    CREATE INDEX IF NOT EXISTS idx_games_steam_appid ON games(steam_appid);
+    CREATE INDEX IF NOT EXISTS idx_games_epic_app ON games(epic_app_name);
+`;
 
+function columnsOf(db: Database.Database, table: string): string[] {
+  return (db.pragma(`table_info(${table})`) as { name: string }[]).map((c) => c.name);
+}
+
+/**
+ * SQLite can't drop a UNIQUE constraint or alter a CHECK in place, so the table
+ * is rebuilt from GAMES_DDL and the rows copied across.
+ *
+ * The copy names its columns instead of `SELECT *`: columns added by ALTER land
+ * at the end of the old table in the order they were added, and a mismatch
+ * there would quietly write playtime into a rating rather than fail.
+ */
+function rebuildGamesTable(db: Database.Database) {
+  db.transaction(() => {
+    db.exec("ALTER TABLE games RENAME TO games_old");
+    db.exec(GAMES_DDL);
+    const old = new Set(columnsOf(db, "games_old"));
+    const shared = columnsOf(db, "games").filter((c) => old.has(c));
+    db.exec(`INSERT INTO games (${shared.join(", ")}) SELECT ${shared.join(", ")} FROM games_old`);
+    // Indexes follow a renamed table, so their names are still taken until the
+    // old table is gone — creating them any earlier would silently no-op.
+    db.exec("DROP TABLE games_old");
+    db.exec(GAMES_INDEXES);
+  })();
+}
+
+function migrate(db: Database.Database) {
+  db.exec(`
+    ${GAMES_DDL}
     CREATE TABLE IF NOT EXISTS sync_meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
   `);
 
-  // Older databases: add columns introduced after the initial schema.
-  const cols = (db.pragma("table_info(games)") as { name: string }[]).map((c) => c.name);
+  // Older databases: add columns introduced after the initial schema. This runs
+  // before any rebuild so the copy below has every column to copy.
+  const cols = columnsOf(db, "games");
   if (!cols.includes("status_changed_at"))
     db.exec("ALTER TABLE games ADD COLUMN status_changed_at TEXT");
   if (!cols.includes("finished_at")) db.exec("ALTER TABLE games ADD COLUMN finished_at TEXT");
@@ -113,24 +165,16 @@ function migrate(db: Database.Database) {
     db.exec("ALTER TABLE games ADD COLUMN personal_rating INTEGER");
   if (!cols.includes("notes")) db.exec("ALTER TABLE games ADD COLUMN notes TEXT");
 
-  // Older databases: the store CHECK only allowed steam/epic/both. SQLite can't
-  // alter a CHECK in place, so rebuild the table once when the old constraint
-  // is detected.
+  // Two older shapes need the table rebuilt: one where the store CHECK only
+  // allowed steam/epic/both, and one where normalized_title was UNIQUE.
   const schema = db
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'games'")
     .get() as { sql: string };
-  if (!schema.sql.includes("'gog'")) {
-    db.exec(`
-      BEGIN;
-      ALTER TABLE games RENAME TO games_old;
-      ${schema.sql.replace(/CHECK\s*\(\s*store IN \([^)]*\)\s*\)/, `CHECK (${STORE_CHECK})`)};
-      INSERT INTO games SELECT * FROM games_old;
-      DROP TABLE games_old;
-      CREATE INDEX IF NOT EXISTS idx_games_store ON games(store);
-      CREATE INDEX IF NOT EXISTS idx_games_enrich ON games(enrich_status);
-      COMMIT;
-    `);
-  }
+  const staleStoreCheck = !schema.sql.includes("'gog'");
+  const uniqueTitle = /normalized_title\s+TEXT\s+NOT\s+NULL\s+UNIQUE/i.test(schema.sql);
+  if (staleStoreCheck || uniqueTitle) rebuildGamesTable(db);
+
+  db.exec(GAMES_INDEXES);
 }
 
 /** For tests: use an in-memory database. */

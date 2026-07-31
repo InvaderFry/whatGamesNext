@@ -29,6 +29,15 @@ export interface Game {
   notes: string | null;
 }
 
+export const STORE_LABEL: Record<Game["store"], string> = {
+  steam: "Steam",
+  epic: "Epic",
+  both: "Steam + Epic",
+  gog: "GOG",
+  itch: "itch.io",
+  other: "Other",
+};
+
 export interface ScoreBreakdown {
   rating: number;
   unplayed: number;
@@ -63,6 +72,13 @@ export interface Recommendation {
   game: Game;
 }
 
+/** A game folded into an entry you already had, matched on its title. */
+export interface MergeNote {
+  title: string;
+  into: string;
+  store: Game["store"];
+}
+
 export interface SyncResult {
   source: string;
   fetched: number;
@@ -70,6 +86,8 @@ export interface SyncResult {
   updated: number;
   /** Games moved from 'unplayed' to 'playing' because they have real hours on them. */
   promoted: number;
+  /** Cross-store merges, reported so a wrong one is visible instead of silent. */
+  merged: MergeNote[];
 }
 
 export interface SyncStatus {
@@ -148,6 +166,13 @@ export interface SettingInfo {
 
 export type SettingsMap = Record<"steam_api_key" | "steam_id" | "rawg_api_key", SettingInfo>;
 
+export interface RestoreSummary {
+  restored: number;
+  unchanged: number;
+  /** Titles in the file with nothing in the library to attach them to. */
+  notFound: string[];
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
   const body = await res.json().catch(() => ({}));
@@ -218,6 +243,14 @@ export const api = {
     request<{ requeued: number }>("/api/sync/enrich/retry-failed", { method: "POST" }),
   refreshEnrich: () =>
     request<{ requeued: number }>("/api/sync/enrich/refresh", { method: "POST" }),
+  /** A plain link, so the browser saves the file rather than the app buffering it. */
+  exportUrl: (format: "json" | "csv") => `/api/export?format=${format}`,
+  restoreBackup: (text: string) =>
+    request<RestoreSummary>("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    }),
 };
 
 export function formatPlaytime(minutes: number): string {

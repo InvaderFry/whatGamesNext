@@ -73,6 +73,12 @@ tab list (arrow keys, Home/End), and `prefers-reduced-motion` is respected.
   **?** rather than a made-up "Moderate", so an un-enriched library doesn't look like it's been
   assessed when it hasn't. Treat the score as a rough sort key, not a verdict.
 
+A game you own on more than one store is matched by title and kept as a single entry. Games are
+matched on a store's own id first, though, so two different games that share a name — DOOM
+(1993/2016), Prey (2006/2017) — stay separate as long as each came from a store that has ids. A
+pasted list has no ids to go on, so those still match by title alone; any merge made on a title is
+listed after the sync, in case one of them was really two different games.
+
 ## Setup
 
 Requires Node 20+.
@@ -105,6 +111,19 @@ a `.env` file (`cp .env.example .env`) — the Settings values win when both are
    It's resumable: results are saved per game, so an interrupted run picks up where it stopped and
    already-enriched games are skipped.
 3. Go to **What next?** and pick a mode.
+
+### Backup and restore
+
+**Settings → Backup** downloads your statuses, 1–10 ratings, notes, shortlist, finish dates, hidden
+games and difficulty overrides. Everything else — ratings, lengths, review scores, cover art,
+playtime — comes back on its own by re-syncing and re-enriching, so it isn't in the file; games
+carrying nothing you wrote are left out entirely. JSON round-trips exactly. CSV holds the same data
+for a spreadsheet, quoted properly, so a note with commas or line breaks in it survives the trip.
+
+Restoring fills in games you already have and reports any it couldn't place rather than inventing
+rows for them — sync first if you're restoring into an empty library. The file wins wherever it has
+a value, and anything it has no value for is left as it is, so restoring onto a fresh sync is exact
+and a hand-trimmed CSV is safe to paste.
 
 ### Demo mode
 
