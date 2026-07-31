@@ -36,16 +36,37 @@ export default function GameCard({
   reason,
   breakdown,
   onChanged,
+  showShortlistToggle = true,
 }: {
   game: Game;
   reason?: string;
   breakdown?: ScoreBreakdown | null;
   onChanged?: () => void;
+  /** Off on the Shortlist page, where each row already has a remove button —
+   *  two controls doing the same job would carry the same label. */
+  showShortlistToggle?: boolean;
 }) {
   const [game, setGame] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [coverFailed, setCoverFailed] = useState(false);
+
+  async function toggleShortlist() {
+    const listed = game.queue_position != null;
+    setBusy(true);
+    try {
+      await (listed ? api.removeFromQueue(game.id) : api.addToQueue(game.id));
+      // The card owns its copy of the game, so reflect the change locally
+      // rather than making the whole page reload for one toggle.
+      setGame((g) => ({ ...g, queue_position: listed ? null : Number.MAX_SAFE_INTEGER }));
+      setError(null);
+      onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function patch(p: Parameters<typeof api.patchGame>[1]) {
     setBusy(true);
@@ -155,6 +176,18 @@ export default function GameCard({
               </option>
             ))}
           </select>
+          {showShortlistToggle && (
+            <button
+              disabled={busy}
+              aria-pressed={game.queue_position != null}
+              aria-label={`${game.queue_position != null ? "Remove" : "Add"} ${game.title} ${
+                game.queue_position != null ? "from" : "to"
+              } the shortlist`}
+              onClick={() => void toggleShortlist()}
+            >
+              {game.queue_position != null ? "★ Listed" : "☆ Shortlist"}
+            </button>
+          )}
           <button
             disabled={busy}
             aria-label={`${game.hidden ? "Unhide" : "Hide"} ${game.title}`}

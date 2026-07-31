@@ -151,8 +151,8 @@ describe("Recommend", () => {
     // Only the selected tab is reachable by Tab; arrows move within the list.
     screen.getByRole("tab", { name: "Play next" }).focus();
     await user.keyboard("{ArrowRight}");
-    expect(screen.getByRole("tab", { selected: true })).toHaveAccessibleName("Quick wins");
-    expect(screen.getByRole("tab", { name: "Quick wins" })).toHaveFocus();
+    expect(screen.getByRole("tab", { selected: true })).toHaveAccessibleName("Tonight");
+    expect(screen.getByRole("tab", { name: "Tonight" })).toHaveFocus();
 
     await user.keyboard("{ArrowLeft}{ArrowLeft}");
     expect(screen.getByRole("tab", { selected: true })).toHaveAccessibleName("Surprise me");

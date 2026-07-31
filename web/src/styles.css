@@ -218,6 +218,53 @@ button.btn.secondary {
   }
 }
 
+.queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  max-width: 560px;
+}
+.queue li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.queue-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  padding-top: 4px;
+}
+.queue-controls .btn {
+  padding: 4px 10px;
+  font-size: 13px;
+  line-height: 1;
+}
+.queue-rank {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+.queue li > .card {
+  flex: 1;
+  min-width: 0;
+}
+/* Cards are sized for a ~260px grid column; at full row width the 460:215
+   cover balloons and a short list turns into several screens of scrolling.
+   The point of this page is to see the running order at a glance. */
+.queue .card .cover,
+.queue .card .cover-placeholder {
+  aspect-ratio: auto;
+  height: 96px;
+}
+.queue .card .cover-placeholder {
+  font-size: 14px;
+}
+
 .pager {
   display: flex;
   gap: 12px;

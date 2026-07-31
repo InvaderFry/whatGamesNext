@@ -7,13 +7,22 @@ import { makeGame } from "../test-utils";
 
 vi.mock("../api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api")>();
-  return { ...actual, api: { ...actual.api, patchGame: vi.fn() } };
+  return {
+    ...actual,
+    api: { ...actual.api, patchGame: vi.fn(), addToQueue: vi.fn(), removeFromQueue: vi.fn() },
+  };
 });
 
 const patchGame = vi.mocked(api.patchGame);
+const addToQueue = vi.mocked(api.addToQueue);
+const removeFromQueue = vi.mocked(api.removeFromQueue);
 
 beforeEach(() => {
   patchGame.mockReset();
+  addToQueue.mockReset();
+  removeFromQueue.mockReset();
+  addToQueue.mockResolvedValue({ games: [] });
+  removeFromQueue.mockResolvedValue({ games: [] });
 });
 
 describe("GameCard", () => {
@@ -79,6 +88,43 @@ describe("GameCard", () => {
   it("links a game owned on both stores, since the appid is what matters", () => {
     render(<GameCard game={makeGame({ store: "both" })} />);
     expect(screen.getByLabelText("Launch Hades in Steam")).toBeInTheDocument();
+  });
+
+  it("shortlists a game and flips the button without a reload", async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn();
+    render(<GameCard game={makeGame()} onChanged={onChanged} />);
+
+    const button = screen.getByRole("button", { name: "Add Hades to the shortlist" });
+    expect(button).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(button);
+    expect(addToQueue).toHaveBeenCalledWith(1);
+    expect(onChanged).toHaveBeenCalled();
+    expect(
+      await screen.findByRole("button", { name: "Remove Hades from the shortlist" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("takes a game back off the shortlist", async () => {
+    const user = userEvent.setup();
+    render(<GameCard game={makeGame({ queue_position: 2 })} />);
+
+    await user.click(screen.getByRole("button", { name: "Remove Hades from the shortlist" }));
+    expect(removeFromQueue).toHaveBeenCalledWith(1);
+    expect(
+      await screen.findByRole("button", { name: "Add Hades to the shortlist" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the old state and shows the error when shortlisting fails", async () => {
+    const user = userEvent.setup();
+    addToQueue.mockRejectedValue(new Error("queue full"));
+    render(<GameCard game={makeGame()} />);
+
+    await user.click(screen.getByRole("button", { name: "Add Hades to the shortlist" }));
+    expect(await screen.findByText("queue full")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Hades to the shortlist" })).toBeInTheDocument();
   });
 
   it("falls back to the title placeholder when the cover fails to load", () => {

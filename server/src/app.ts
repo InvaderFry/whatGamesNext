@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { repoRoot } from "./env.js";
 import { libraryRouter } from "./routes/library.js";
+import { queueRouter } from "./routes/queue.js";
 import { syncRouter } from "./routes/sync.js";
 import { recommendRouter } from "./routes/recommend.js";
 import { settingsRouter } from "./routes/settings.js";
@@ -13,6 +14,7 @@ export function createApp(): express.Express {
   app.use(express.json({ limit: "2mb" }));
 
   app.use("/api", libraryRouter);
+  app.use("/api", queueRouter);
   app.use("/api", syncRouter);
   app.use("/api", recommendRouter);
   app.use("/api", settingsRouter);

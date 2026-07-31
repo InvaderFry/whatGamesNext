@@ -2,14 +2,16 @@ import { useEffect, useState } from "react";
 import Library from "./pages/Library";
 import Toasts from "./components/Toasts";
 import Recommend from "./pages/Recommend";
+import Shortlist from "./pages/Shortlist";
 import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
 import { readUrl, writeUrl } from "./urlState";
 
-type Page = "recommend" | "library" | "stats" | "settings";
+type Page = "recommend" | "shortlist" | "library" | "stats" | "settings";
 
 const PAGES: [Page, string][] = [
   ["recommend", "What next?"],
+  ["shortlist", "Shortlist"],
   ["library", "Library"],
   ["stats", "Stats"],
   ["settings", "Settings"],
@@ -54,6 +56,7 @@ export default function App() {
       </header>
       <main>
         {page === "recommend" && <Recommend />}
+        {page === "shortlist" && <Shortlist />}
         {page === "library" && <Library />}
         {page === "stats" && <Stats />}
         {page === "settings" && <Settings />}

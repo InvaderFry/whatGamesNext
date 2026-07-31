@@ -34,6 +34,8 @@ export interface GameRow {
   last_synced: string | null;
   status_changed_at: string | null;
   finished_at: string | null;
+  /** 1-based position in the shortlist, or null when not shortlisted. */
+  queue_position: number | null;
 }
 
 let db: Database.Database | null = null;
@@ -81,7 +83,8 @@ function migrate(db: Database.Database) {
       enrich_error TEXT,
       last_synced TEXT,
       status_changed_at TEXT,
-      finished_at TEXT
+      finished_at TEXT,
+      queue_position INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_games_store ON games(store);
     CREATE INDEX IF NOT EXISTS idx_games_enrich ON games(enrich_status);
@@ -97,6 +100,8 @@ function migrate(db: Database.Database) {
   if (!cols.includes("status_changed_at"))
     db.exec("ALTER TABLE games ADD COLUMN status_changed_at TEXT");
   if (!cols.includes("finished_at")) db.exec("ALTER TABLE games ADD COLUMN finished_at TEXT");
+  if (!cols.includes("queue_position"))
+    db.exec("ALTER TABLE games ADD COLUMN queue_position INTEGER");
 
   // Older databases: the store CHECK only allowed steam/epic/both. SQLite can't
   // alter a CHECK in place, so rebuild the table once when the old constraint

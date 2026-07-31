@@ -10,6 +10,7 @@ ranks your backlog in several ways:
 | Mode                    | What it does                                                                                                            |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | **Play next**           | Weighted blend of rating, how untouched the game is, fit with your time budget, and recency — with a time-budget slider |
+| **Tonight**             | Games you're already partway through, ranked by how much is _left_ rather than how good they are                        |
 | **Quick wins**          | Short, highly rated games you haven't started                                                                           |
 | **Backlog shame**       | Acclaimed games (80+) you've barely played                                                                              |
 | **Hidden gems**         | ≥90% positive on Steam but with few reviews                                                                             |
@@ -27,6 +28,10 @@ report playtime but never whether you consider a game started, so without this a
 hours would sit at "unplayed" forever. Two hours is Steam's own refund window, and a fair line
 between trying something and actually playing it. This only ever applies to games whose status you
 haven't set yourself: once you change a status by hand, that game is yours and sync leaves it alone.
+
+The **Shortlist** page is an ordered "next up" queue. Star a game from anywhere to add it, then
+reorder with the ↑/↓ buttons — so a pick you liked survives a refresh instead of being re-rolled
+away.
 
 The **Stats** page tracks your play history: backlog size and hours, games finished per year
 (finish dates are recorded when you mark a game finished), total playtime, and abandonment rate.

@@ -247,6 +247,72 @@ describe("GET /api/recommend", () => {
   });
 });
 
+describe("GET /api/recommend?mode=tonight", () => {
+  it("only offers games already under way, closest to done first", async () => {
+    seed([
+      // 15h in on a 20h game: 5h left.
+      { title: "Nearly Done", status: "playing", hltb_main: 20, playtime_minutes: 900 },
+      // 2h in on a 60h game: 58h left, way past a 6h evening.
+      { title: "Barely Started", status: "playing", hltb_main: 60, playtime_minutes: 120 },
+      { title: "Not Started", status: "unplayed", hltb_main: 5 },
+      { title: "Already Done", status: "finished", hltb_main: 5, playtime_minutes: 300 },
+    ]);
+    const res = await request(app).get("/api/recommend?mode=tonight&budget=6");
+
+    const titles = res.body.results.map((r: { game: { title: string } }) => r.game.title);
+    expect(titles).toEqual(["Nearly Done", "Barely Started"]);
+    expect(res.body.results[0].reason).toMatch(/5h left of 20h/);
+  });
+
+  it("says so when a game is past its main story", async () => {
+    seed([{ title: "Overrun", status: "playing", hltb_main: 10, playtime_minutes: 900 }]);
+    const res = await request(app).get("/api/recommend?mode=tonight");
+    expect(res.body.results[0].reason).toMatch(/past the 10h main story/);
+  });
+
+  it("copes with a game of unknown length", async () => {
+    seed([{ title: "Unknown Length", status: "playing", hltb_main: null, playtime_minutes: 300 }]);
+    const res = await request(app).get("/api/recommend?mode=tonight");
+    expect(res.body.results[0].reason).toMatch(/length unknown/);
+  });
+});
+
+describe("shortlist routes", () => {
+  it("adds, reorders and removes, always returning the current list", async () => {
+    seed([{ title: "A" }, { title: "B" }]);
+
+    const added = await request(app).post("/api/queue/1");
+    expect(added.status).toBe(200);
+    await request(app).post("/api/queue/2");
+
+    const moved = await request(app).post("/api/queue/2/move").send({ direction: "up" });
+    expect(moved.body.games.map((g: { title: string }) => g.title)).toEqual(["B", "A"]);
+    expect(moved.body.games[0].queue_position).toBe(1);
+
+    const removed = await request(app).delete("/api/queue/2");
+    expect(removed.body.games.map((g: { title: string }) => g.title)).toEqual(["A"]);
+  });
+
+  it("rejects a bad direction", async () => {
+    seed([{ title: "A" }]);
+    await request(app).post("/api/queue/1");
+    const res = await request(app).post("/api/queue/1/move").send({ direction: "sideways" });
+    expect(res.status).toBe(400);
+  });
+
+  it("404s on adding a game that doesn't exist", async () => {
+    const res = await request(app).post("/api/queue/999");
+    expect(res.status).toBe(404);
+  });
+
+  it("surfaces the shortlist position on the game itself", async () => {
+    seed([{ title: "A" }]);
+    await request(app).post("/api/queue/1");
+    const games = await request(app).get("/api/games");
+    expect(games.body.games[0].queue_position).toBe(1);
+  });
+});
+
 describe("sync routes", () => {
   it("POST /api/sync/steam upserts mocked owned games", async () => {
     const res = await request(app).post("/api/sync/steam");

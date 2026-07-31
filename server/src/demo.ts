@@ -1,6 +1,7 @@
 import { getDb } from "./db.js";
 import { normalizeTitle } from "./lib/match.js";
 import { deriveDifficulty } from "./lib/difficulty.js";
+import { promoteStartedGames } from "./lib/library.js";
 
 /**
  * DEMO=1 seed data: a realistic spread of games so the UI and every
@@ -364,5 +365,8 @@ export function seedDemoData(): number {
     }
   });
   tx();
+  // Several demo games carry real playtime, so apply the same rule a sync would
+  // — otherwise "Tonight" is the one mode a fresh demo can't demonstrate.
+  promoteStartedGames();
   return DEMO_GAMES.length;
 }

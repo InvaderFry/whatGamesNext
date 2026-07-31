@@ -14,6 +14,11 @@ import { toast } from "../components/Toasts";
 
 const MODES: [string, string, string][] = [
   ["play-next", "Play next", "Weighted blend of rating, backlog status, length fit, and recency"],
+  [
+    "tonight",
+    "Tonight",
+    "Games you're already partway through, ranked by how much is left rather than how good they are",
+  ],
   ["quick-wins", "Quick wins", "Short, highly rated games you haven't touched"],
   ["backlog-shame", "Backlog shame", "Acclaimed games (80+) you've barely played"],
   ["hidden-gems", "Hidden gems", "Loved on Steam but with few reviews"],

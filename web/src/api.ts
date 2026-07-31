@@ -22,6 +22,8 @@ export interface Game {
   status: "unplayed" | "playing" | "finished" | "abandoned";
   hidden: boolean;
   enrich_status: "pending" | "done" | "failed";
+  /** 1-based position on the shortlist, or null when not shortlisted. */
+  queue_position: number | null;
 }
 
 export interface ScoreBreakdown {
@@ -138,6 +140,16 @@ export const api = {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(patch),
+    }),
+  queue: () => request<{ games: Game[] }>("/api/queue"),
+  addToQueue: (id: number) => request<{ games: Game[] }>(`/api/queue/${id}`, { method: "POST" }),
+  removeFromQueue: (id: number) =>
+    request<{ games: Game[] }>(`/api/queue/${id}`, { method: "DELETE" }),
+  moveInQueue: (id: number, direction: "up" | "down") =>
+    request<{ games: Game[] }>(`/api/queue/${id}/move`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ direction }),
     }),
   recommend: (params: URLSearchParams) =>
     request<{ mode: string; count: number; total: number; results: Recommendation[] }>(
