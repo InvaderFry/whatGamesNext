@@ -1,4 +1,5 @@
 import type { GameRow } from "../db.js";
+import { tasteScore, EMPTY_PROFILE, type TasteProfile } from "./taste.js";
 
 /**
  * Composite "play next" scoring and named recommendation modes.
@@ -11,6 +12,7 @@ export interface Weights {
   unplayed: number; // bonus for games with little/no playtime
   lengthFit: number; // closeness of HLTB main to the user's time budget
   recency: number; // newer releases score higher
+  taste: number; // match against the genres/tags you actually finish
 }
 
 export const DEFAULT_WEIGHTS: Weights = {
@@ -18,6 +20,9 @@ export const DEFAULT_WEIGHTS: Weights = {
   unplayed: 0.8,
   lengthFit: 0.6,
   recency: 0.3,
+  // On by default: with no history every game scores the same here, so it
+  // contributes a constant and reorders nothing until there's something to learn.
+  taste: 0.7,
 };
 
 /**
@@ -54,13 +59,18 @@ function recencyScore(releaseDate: string | null, now = new Date()): number {
 
 export type ScoreBreakdown = Record<keyof Weights, number>;
 
-function componentScores(g: GameRow, budgetHours: number | null): ScoreBreakdown {
+function componentScores(
+  g: GameRow,
+  budgetHours: number | null,
+  taste: TasteProfile,
+): ScoreBreakdown {
   const rating = effectiveRating(g);
   return {
     rating: rating != null ? rating / 100 : 0.4,
     unplayed: unplayedScore(g.playtime_minutes),
     lengthFit: lengthFitScore(g.hltb_main, budgetHours),
     recency: recencyScore(g.release_date),
+    taste: tasteScore(g, taste),
   };
 }
 
@@ -68,8 +78,9 @@ export function compositeScore(
   g: GameRow,
   weights: Weights = DEFAULT_WEIGHTS,
   budgetHours: number | null = null,
+  taste: TasteProfile = EMPTY_PROFILE,
 ): number {
-  const scores = componentScores(g, budgetHours);
+  const scores = componentScores(g, budgetHours, taste);
   const keys = Object.keys(scores) as (keyof Weights)[];
   const totalWeight = keys.reduce((a, k) => a + weights[k], 0);
   if (totalWeight === 0) return 0;
@@ -84,8 +95,9 @@ export function scoreBreakdown(
   g: GameRow,
   weights: Weights = DEFAULT_WEIGHTS,
   budgetHours: number | null = null,
+  taste: TasteProfile = EMPTY_PROFILE,
 ): ScoreBreakdown | null {
-  const scores = componentScores(g, budgetHours);
+  const scores = componentScores(g, budgetHours, taste);
   const keys = Object.keys(scores) as (keyof Weights)[];
   const total = keys.reduce((a, k) => a + weights[k] * scores[k], 0);
   if (total <= 0) return null;
@@ -106,6 +118,8 @@ export type RecommendMode =
 export interface RecommendOptions {
   budgetHours?: number | null;
   weights?: Weights;
+  /** Built from the whole library by the caller — see routes/recommend.ts. */
+  taste?: TasteProfile;
 }
 
 interface Scored {
@@ -127,15 +141,16 @@ export function recommend(
   const pool = playable(games);
   const budget = opts.budgetHours ?? null;
   const weights = opts.weights ?? DEFAULT_WEIGHTS;
+  const taste = opts.taste ?? EMPTY_PROFILE;
 
   switch (mode) {
     case "play-next":
       return pool
         .map((g) => ({
           game: g,
-          score: compositeScore(g, weights, budget),
+          score: compositeScore(g, weights, budget, taste),
           reason: describeComposite(g, budget),
-          breakdown: scoreBreakdown(g, weights, budget),
+          breakdown: scoreBreakdown(g, weights, budget, taste),
         }))
         .sort((a, b) => b.score - a.score);
 

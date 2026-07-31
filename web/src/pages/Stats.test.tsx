@@ -29,6 +29,12 @@ function data(overrides: Partial<StatsData> = {}): StatsData {
       { genre: "Action", games: 12, hours: 60 },
     ],
     personal: { rated: 2, average: 7.5, top: [{ id: 1, title: "Hades", personal_rating: 9 }] },
+    taste: {
+      observations: 20,
+      baseline: 70,
+      liked: [{ key: "rpg", affinity: 0.86, evidence: 7 }],
+      disliked: [{ key: "shooter", affinity: 0.2, evidence: 4 }],
+    },
     totalPlaytimeHours: 900,
     abandonmentRate: 29,
     recentFinishes: [],
@@ -90,6 +96,31 @@ describe("Stats", () => {
     stats.mockResolvedValue(data({ personal: { rated: 0, average: null, top: [] } }));
     render(<Stats />);
     expect(await screen.findByText(/haven.t rated anything yet/)).toBeInTheDocument();
+  });
+
+  it("names what it has learned, and says the slider can turn it off", async () => {
+    render(<Stats />);
+    expect(await screen.findByText("What you actually like")).toBeInTheDocument();
+    expect(screen.getByText(/you stick with 70% of what you start/i)).toBeInTheDocument();
+    expect(screen.getByText("rpg (7)")).toBeInTheDocument();
+    expect(screen.getByText("shooter (4)")).toBeInTheDocument();
+  });
+
+  it("admits when there isn't enough history to have learned anything", async () => {
+    stats.mockResolvedValue(
+      data({ taste: { observations: 2, baseline: 100, liked: [], disliked: [] } }),
+    );
+    render(<Stats />);
+    expect(await screen.findByText(/Not enough history yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/stand out from your own average/)).not.toBeInTheDocument();
+  });
+
+  it("says so when there's history but nothing separates from the average", async () => {
+    stats.mockResolvedValue(
+      data({ taste: { observations: 30, baseline: 90, liked: [], disliked: [] } }),
+    );
+    render(<Stats />);
+    expect(await screen.findByText(/Nothing stands out yet/)).toBeInTheDocument();
   });
 
   it("shows a skeleton rather than a blank page while loading", () => {

@@ -34,6 +34,7 @@ export interface ScoreBreakdown {
   unplayed: number;
   lengthFit: number;
   recency: number;
+  taste: number;
 }
 
 export type Weights = ScoreBreakdown;
@@ -44,6 +45,7 @@ export const DEFAULT_WEIGHTS: Weights = {
   unplayed: 0.8,
   lengthFit: 0.6,
   recency: 0.3,
+  taste: 0.7,
 };
 
 export const WEIGHT_LABELS: [keyof Weights, string][] = [
@@ -51,6 +53,7 @@ export const WEIGHT_LABELS: [keyof Weights, string][] = [
   ["unplayed", "Untouched"],
   ["lengthFit", "Length fit"],
   ["recency", "Recency"],
+  ["taste", "Your taste"],
 ];
 
 export interface Recommendation {
@@ -123,6 +126,14 @@ export interface Stats {
     rated: number;
     average: number | null;
     top: { id: number; title: string; personal_rating: number }[];
+  };
+  taste: {
+    /** Games that said anything at all — rated, finished or abandoned. */
+    observations: number;
+    /** Share of your verdicts that were positive, as a percentage. */
+    baseline: number;
+    liked: { key: string; affinity: number; evidence: number }[];
+    disliked: { key: string; affinity: number; evidence: number }[];
   };
   totalPlaytimeHours: number;
   abandonmentRate: number | null;

@@ -277,6 +277,95 @@ describe("GET /api/recommend?mode=tonight", () => {
   });
 });
 
+describe("learned taste", () => {
+  /** A history of finishing RPGs and dropping shooters. */
+  function seedHistory() {
+    seed([
+      ...Array.from({ length: 4 }, (_, i) => ({
+        title: `Finished RPG ${i}`,
+        status: "finished",
+        genres: ["RPG"],
+      })),
+      ...Array.from({ length: 4 }, (_, i) => ({
+        title: `Dropped Shooter ${i}`,
+        status: "abandoned",
+        genres: ["Shooter"],
+      })),
+    ]);
+  }
+
+  it("prefers a genre you finish over a better-rated one you drop", async () => {
+    seedHistory();
+    seed([
+      { title: "New Shooter", metacritic: 92, hltb_main: 10, genres: ["Shooter"] },
+      { title: "New RPG", metacritic: 80, hltb_main: 10, genres: ["RPG"] },
+    ]);
+
+    const learned = await request(app).get("/api/recommend?mode=play-next");
+    expect(learned.body.results[0].game.title).toBe("New RPG");
+
+    // Turning the component off hands the ranking back to the critic score.
+    const off = await request(app).get("/api/recommend?mode=play-next&w_taste=0");
+    expect(off.body.results[0].game.title).toBe("New Shooter");
+  });
+
+  it("changes nothing when there is no history to learn from", async () => {
+    seed([
+      { title: "Better", metacritic: 92, hltb_main: 10, genres: ["Shooter"] },
+      { title: "Worse", metacritic: 80, hltb_main: 10, genres: ["RPG"] },
+    ]);
+    const on = await request(app).get("/api/recommend?mode=play-next");
+    const off = await request(app).get("/api/recommend?mode=play-next&w_taste=0");
+
+    const titles = (r: typeof on) =>
+      r.body.results.map((x: { game: { title: string } }) => x.game.title);
+    expect(titles(on)).toEqual(titles(off));
+    expect(titles(on)[0]).toBe("Better");
+  });
+
+  it("learns from the whole library, not just what the filters let through", async () => {
+    seedHistory();
+    seed([{ title: "New RPG", metacritic: 80, hltb_main: 10, genres: ["RPG"] }]);
+
+    // Filtering to RPG hides every shooter from `recommend`, but the profile is
+    // built separately — so the RPG affinity still reflects the dropped ones.
+    const filtered = await request(app).get("/api/recommend?mode=play-next&genre=RPG");
+    const unfiltered = await request(app).get("/api/recommend?mode=play-next");
+    const scoreOf = (r: typeof filtered) =>
+      r.body.results.find((x: { game: { title: string } }) => x.game.title === "New RPG").score;
+    expect(scoreOf(filtered)).toBe(scoreOf(unfiltered));
+  });
+
+  it("reports what it learned, and admits when it hasn't", async () => {
+    const cold = await request(app).get("/api/stats");
+    expect(cold.body.taste).toMatchObject({ observations: 0, liked: [], disliked: [] });
+
+    seedHistory();
+    const warm = await request(app).get("/api/stats");
+    expect(warm.body.taste.observations).toBe(8);
+    expect(warm.body.taste.liked.map((t: { key: string }) => t.key)).toContain("rpg");
+    expect(warm.body.taste.disliked.map((t: { key: string }) => t.key)).toContain("shooter");
+  });
+
+  it("counts a hidden game as evidence even though it's never recommended", async () => {
+    seed([
+      ...Array.from({ length: 4 }, (_, i) => ({
+        title: `Hidden Drop ${i}`,
+        status: "abandoned",
+        genres: ["Shooter"],
+        hidden: 1,
+      })),
+      ...Array.from({ length: 4 }, (_, i) => ({
+        title: `Finished RPG ${i}`,
+        status: "finished",
+        genres: ["RPG"],
+      })),
+    ]);
+    const res = await request(app).get("/api/stats");
+    expect(res.body.taste.disliked.map((t: { key: string }) => t.key)).toContain("shooter");
+  });
+});
+
 describe("personal rating and notes", () => {
   it("stores a rating and a note", async () => {
     seed([{ title: "Hades" }]);

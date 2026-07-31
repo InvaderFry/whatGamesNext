@@ -6,6 +6,7 @@ const BREAKDOWN_LABELS: [keyof ScoreBreakdown, string][] = [
   ["unplayed", "untouched"],
   ["lengthFit", "length fit"],
   ["recency", "recency"],
+  ["taste", "your taste"],
 ];
 
 function describeBreakdown(b: ScoreBreakdown): string {

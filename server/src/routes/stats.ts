@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { getDb } from "../db.js";
+import { listGames } from "../lib/library.js";
+import { computeTasteProfile, tasteHighlights } from "../lib/taste.js";
 
 export const statsRouter = Router();
 
@@ -112,6 +114,10 @@ statsRouter.get("/stats", (_req, res) => {
     )
     .all() as { id: number; title: string; personal_rating: number }[];
 
+  // Surfaced so the model isn't a black box quietly reordering the library.
+  const profile = computeTasteProfile(listGames({ includeHidden: true }));
+  const highlights = tasteHighlights(profile);
+
   res.json({
     statusCounts,
     finishedByYear,
@@ -134,6 +140,12 @@ statsRouter.get("/stats", (_req, res) => {
       rated: rated.n,
       average: rated.avg != null ? Math.round(rated.avg * 10) / 10 : null,
       top: topRated,
+    },
+    taste: {
+      observations: profile.observations,
+      baseline: Math.round(profile.globalRate * 100),
+      liked: highlights.liked,
+      disliked: highlights.disliked,
     },
     totalPlaytimeHours: Math.round(playtime / 6) / 10,
     abandonmentRate: decided > 0 ? Math.round((statusCounts.abandoned / decided) * 100) : null,

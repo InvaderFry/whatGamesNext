@@ -31,7 +31,7 @@ describe("GameCard", () => {
       <GameCard
         game={makeGame()}
         reason="rated 93, never played"
-        breakdown={{ rating: 0.5, unplayed: 0.3, lengthFit: 0.15, recency: 0.05 }}
+        breakdown={{ rating: 0.5, unplayed: 0.3, lengthFit: 0.15, recency: 0.05, taste: 0 }}
       />,
     );
     expect(screen.getByText("Hades")).toBeInTheDocument();
