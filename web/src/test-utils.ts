@@ -26,6 +26,8 @@ export function makeGame(overrides: Partial<Game> = {}): Game {
     hidden: false,
     enrich_status: "done",
     queue_position: null,
+    personal_rating: null,
+    notes: null,
     ...overrides,
   };
 }

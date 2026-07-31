@@ -24,6 +24,9 @@ export interface Game {
   enrich_status: "pending" | "done" | "failed";
   /** 1-based position on the shortlist, or null when not shortlisted. */
   queue_position: number | null;
+  /** Your own 1–10 score, which outranks critic ratings where it's set. */
+  personal_rating: number | null;
+  notes: string | null;
 }
 
 export interface ScoreBreakdown {
@@ -105,7 +108,22 @@ export interface Stats {
   statusCounts: Record<"unplayed" | "playing" | "finished" | "abandoned", number>;
   finishedByYear: { year: string; n: number }[];
   untrackedFinishes: number;
-  backlog: { games: number; knownHours: number; unknownLength: number };
+  finishedThisYear: number;
+  finishedLastYear: number;
+  backlog: {
+    games: number;
+    knownHours: number;
+    unknownLength: number;
+    /** Known hours plus unsized games costed at the median known length. */
+    estimatedHours: number | null;
+    medianLength: number | null;
+  };
+  genres: { genre: string; games: number; hours: number }[];
+  personal: {
+    rated: number;
+    average: number | null;
+    top: { id: number; title: string; personal_rating: number }[];
+  };
   totalPlaytimeHours: number;
   abandonmentRate: number | null;
   recentFinishes: { id: number; title: string; finished_at: string }[];
@@ -134,7 +152,13 @@ export const api = {
   facets: () => request<Facets>("/api/games/facets"),
   patchGame: (
     id: number,
-    patch: Partial<{ status: string; hidden: boolean; difficulty_override: number | null }>,
+    patch: Partial<{
+      status: string;
+      hidden: boolean;
+      difficulty_override: number | null;
+      personal_rating: number | null;
+      notes: string | null;
+    }>,
   ) =>
     request<Game>(`/api/games/${id}`, {
       method: "PATCH",

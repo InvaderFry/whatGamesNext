@@ -20,8 +20,13 @@ export const DEFAULT_WEIGHTS: Weights = {
   recency: 0.3,
 };
 
-/** Best available rating on a 0–100 scale, or null when nothing is known. */
+/**
+ * Best available rating on a 0–100 scale, or null when nothing is known.
+ * Your own score wins where you've given one — you've played the thing, and a
+ * critic hasn't played it *for you*.
+ */
 export function effectiveRating(g: GameRow): number | null {
+  if (g.personal_rating != null) return g.personal_rating * 10; // stored 1–10
   if (g.metacritic != null) return g.metacritic;
   if (g.rawg_rating != null) return g.rawg_rating * 20; // RAWG is 0–5
   if (g.steam_review_pct != null) return g.steam_review_pct;

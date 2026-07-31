@@ -127,6 +127,53 @@ describe("GameCard", () => {
     expect(screen.getByRole("button", { name: "Add Hades to the shortlist" })).toBeInTheDocument();
   });
 
+  it("saves a rating from the take panel", async () => {
+    const user = userEvent.setup();
+    patchGame.mockResolvedValue(makeGame({ personal_rating: 9 }));
+    render(<GameCard game={makeGame()} />);
+
+    await user.click(screen.getByRole("button", { name: "Your rating and notes for Hades" }));
+    await user.selectOptions(screen.getByLabelText("Your rating for Hades"), "9");
+
+    expect(patchGame).toHaveBeenCalledWith(1, { personal_rating: 9 });
+    expect(await screen.findByText("♥ 9/10")).toBeInTheDocument();
+  });
+
+  it("shows your score instead of the critic score once you've given one", () => {
+    render(<GameCard game={makeGame({ personal_rating: 4 })} />);
+    expect(screen.getByText("♥ 4/10")).toBeInTheDocument();
+    expect(screen.queryByText("★ 93")).not.toBeInTheDocument();
+  });
+
+  it("saves a note when the field loses focus, not on every keystroke", async () => {
+    const user = userEvent.setup();
+    patchGame.mockResolvedValue(makeGame({ notes: "dropped at the swamp" }));
+    render(<GameCard game={makeGame()} />);
+
+    await user.click(screen.getByRole("button", { name: "Your rating and notes for Hades" }));
+    await user.type(screen.getByLabelText("Notes on Hades"), "dropped at the swamp");
+    expect(patchGame).not.toHaveBeenCalled();
+
+    await user.tab();
+    expect(patchGame).toHaveBeenCalledWith(1, { notes: "dropped at the swamp" });
+  });
+
+  it("doesn't save an unchanged note", async () => {
+    const user = userEvent.setup();
+    render(<GameCard game={makeGame({ notes: "already written" })} />);
+
+    await user.click(screen.getByRole("button", { name: "Your rating and notes for Hades" }));
+    await user.click(screen.getByLabelText("Notes on Hades"));
+    await user.tab();
+    expect(patchGame).not.toHaveBeenCalled();
+  });
+
+  it("shows an existing note on the card without opening the panel", () => {
+    render(<GameCard game={makeGame({ notes: "stuck on the final boss" })} />);
+    expect(screen.getByText("stuck on the final boss")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Notes on Hades")).not.toBeInTheDocument();
+  });
+
   it("falls back to the title placeholder when the cover fails to load", () => {
     render(<GameCard game={makeGame()} />);
     fireEvent.error(screen.getByAltText("Hades cover art"));

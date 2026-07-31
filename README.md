@@ -33,8 +33,15 @@ The **Shortlist** page is an ordered "next up" queue. Star a game from anywhere 
 reorder with the ↑/↓ buttons — so a pick you liked survives a refresh instead of being re-rolled
 away.
 
+Every game takes **your own 1–10 score and a free-text note** ("dropped at the swamp"). Where you've
+scored something, that score is what the recommendations rank it by — you've played it and a critic
+hasn't played it for you.
+
 The **Stats** page tracks your play history: backlog size and hours, games finished per year
-(finish dates are recorded when you mark a game finished), total playtime, and abandonment rate.
+(finish dates are recorded when you mark a game finished), this year against last, hours by genre,
+your own ratings, total playtime, and abandonment rate. Backlog hours include games of unknown
+length, costed at the median of the lengths that are known — so the figure isn't quietly understated
+by whatever HowLongToBeat had no entry for.
 
 The UI follows your system light/dark preference, the recommendation modes are a keyboard-navigable
 tab list (arrow keys, Home/End), and `prefers-reduced-motion` is respected.

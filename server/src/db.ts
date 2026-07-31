@@ -36,6 +36,9 @@ export interface GameRow {
   finished_at: string | null;
   /** 1-based position in the shortlist, or null when not shortlisted. */
   queue_position: number | null;
+  /** Your own 1–10 score, which outranks critic ratings where it's set. */
+  personal_rating: number | null;
+  notes: string | null;
 }
 
 let db: Database.Database | null = null;
@@ -84,7 +87,9 @@ function migrate(db: Database.Database) {
       last_synced TEXT,
       status_changed_at TEXT,
       finished_at TEXT,
-      queue_position INTEGER
+      queue_position INTEGER,
+      personal_rating INTEGER CHECK (personal_rating IS NULL OR personal_rating BETWEEN 1 AND 10),
+      notes TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_games_store ON games(store);
     CREATE INDEX IF NOT EXISTS idx_games_enrich ON games(enrich_status);
@@ -102,6 +107,11 @@ function migrate(db: Database.Database) {
   if (!cols.includes("finished_at")) db.exec("ALTER TABLE games ADD COLUMN finished_at TEXT");
   if (!cols.includes("queue_position"))
     db.exec("ALTER TABLE games ADD COLUMN queue_position INTEGER");
+  // No CHECK on the added column: SQLite can't attach one via ALTER, and the
+  // route validates the range anyway. New databases get it from the schema above.
+  if (!cols.includes("personal_rating"))
+    db.exec("ALTER TABLE games ADD COLUMN personal_rating INTEGER");
+  if (!cols.includes("notes")) db.exec("ALTER TABLE games ADD COLUMN notes TEXT");
 
   // Older databases: the store CHECK only allowed steam/epic/both. SQLite can't
   // alter a CHECK in place, so rebuild the table once when the old constraint
