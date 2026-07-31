@@ -18,7 +18,15 @@ ranks your backlog in several ways:
 
 The **Library** page lets you sort by rating / Metacritic / Steam review % / length / difficulty /
 playtime / release date, and filter by store, status, length bucket, genre, and tag. Each game can
-be marked playing / finished / abandoned, hidden, or given a manual difficulty override.
+be marked playing / finished / abandoned, hidden, or given a manual difficulty override. Filters,
+sort and page are kept in the URL, so a view can be bookmarked or shared. Games synced from Steam
+also get **Play** and **Store** links straight from the card.
+
+A game with at least two hours on the clock is marked **playing** automatically on sync — stores
+report playtime but never whether you consider a game started, so without this a game with 200
+hours would sit at "unplayed" forever. Two hours is Steam's own refund window, and a fair line
+between trying something and actually playing it. This only ever applies to games whose status you
+haven't set yourself: once you change a status by hand, that game is yours and sync leaves it alone.
 
 The **Stats** page tracks your play history: backlog size and hours, games finished per year
 (finish dates are recorded when you mark a game finished), total playtime, and abandonment rate.
@@ -58,9 +66,14 @@ a `.env` file (`cp .env.example .env`) — the Settings values win when both are
 
 ### First run
 
-1. Open **Settings**, click **Sync Steam library** (and Epic).
-2. Click **Start enrichment** — this fetches ratings/lengths for every game at ~1 request/sec, so a
-   big library takes a while. It's resumable; already-enriched games are skipped on later runs.
+1. Open **Settings**, click **Sync Steam library** (and Epic). It'll offer to enrich whatever it
+   brought in.
+2. Enrichment fetches ratings, lengths and review scores for every game. Each source is held to
+   about one request a second, but three games are worked at once so the sources are waited on in
+   parallel — roughly a game a second overall, or ~25 minutes for 1,500 games. A progress bar and
+   time estimate show while it runs.
+   It's resumable: results are saved per game, so an interrupted run picks up where it stopped and
+   already-enriched games are skipped.
 3. Go to **What next?** and pick a mode.
 
 ### Demo mode

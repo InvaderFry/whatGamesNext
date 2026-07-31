@@ -55,6 +55,15 @@ export interface Recommendation {
   game: Game;
 }
 
+export interface SyncResult {
+  source: string;
+  fetched: number;
+  added: number;
+  updated: number;
+  /** Games moved from 'unplayed' to 'playing' because they have real hours on them. */
+  promoted: number;
+}
+
 export interface SyncStatus {
   library: {
     total: number;
@@ -63,6 +72,7 @@ export interface SyncStatus {
     other: number;
     enriched: number;
     enrich_failed: number;
+    enrich_pending: number;
   };
   enrichment: {
     running: boolean;
@@ -72,7 +82,11 @@ export interface SyncStatus {
     current: string | null;
     lastError: string | null;
     hltbUnavailable: boolean;
+    etaSeconds: number | null;
   };
+  lastRun: { finishedAt: string; total: number; done: number; failed: number } | null;
+  /** Set when a previous run died mid-flight — the server restarted while enriching. */
+  interrupted: { startedAt: string; total: number } | null;
   config: {
     steamConfigured: boolean;
     rawgConfigured: boolean;
@@ -130,22 +144,16 @@ export const api = {
       `/api/recommend?${params}`,
     ),
   syncStatus: () => request<SyncStatus>("/api/sync/status"),
-  syncSteam: () =>
-    request<{ fetched: number; added: number; updated: number }>("/api/sync/steam", {
-      method: "POST",
-    }),
-  syncEpic: () =>
-    request<{ fetched: number; added: number; updated: number }>("/api/sync/epic", {
-      method: "POST",
-    }),
+  syncSteam: () => request<SyncResult>("/api/sync/steam", { method: "POST" }),
+  syncEpic: () => request<SyncResult>("/api/sync/epic", { method: "POST" }),
   syncImport: (store: string, text: string) =>
-    request<{ fetched: number; added: number; updated: number }>("/api/sync/import", {
+    request<SyncResult>("/api/sync/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ store, text }),
     }),
   syncEpicManual: (titles: string) =>
-    request<{ fetched: number; added: number; updated: number }>("/api/sync/epic/manual", {
+    request<SyncResult>("/api/sync/epic/manual", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ titles }),

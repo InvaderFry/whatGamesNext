@@ -243,6 +243,57 @@ describe("sync routes", () => {
     expect(games.body.count).toBe(2);
   });
 
+  it("marks a game with real hours on it as playing, and leaves a barely-touched one alone", async () => {
+    // The mocked library has Dota 2 at 5000 minutes and Portal 2 at 30.
+    const res = await request(app).post("/api/sync/steam");
+    expect(res.body.promoted).toBe(1);
+
+    const games = await request(app).get("/api/games");
+    const byTitle = Object.fromEntries(
+      games.body.games.map((g: { title: string; status: string }) => [g.title, g.status]),
+    );
+    expect(byTitle["Dota 2"]).toBe("playing");
+    expect(byTitle["Portal 2"]).toBe("unplayed");
+  });
+
+  it("never overrides a status the user set by hand", async () => {
+    await request(app).post("/api/sync/steam");
+    const games = await request(app).get("/api/games");
+    const dota = games.body.games.find((g: { title: string }) => g.title === "Dota 2");
+    expect(dota.status).toBe("playing");
+
+    // Deliberately putting it back stamps status_changed_at, which is the
+    // signal that the inference must stop touching this row.
+    const patched = await request(app).patch(`/api/games/${dota.id}`).send({ status: "unplayed" });
+    expect(patched.body.status).toBe("unplayed");
+
+    const again = await request(app).post("/api/sync/steam");
+    expect(again.body.promoted).toBe(0);
+    const after = await request(app).get("/api/games");
+    expect(after.body.games.find((g: { title: string }) => g.title === "Dota 2").status).toBe(
+      "unplayed",
+    );
+  });
+
+  it("infers status from imported playtime too", async () => {
+    const res = await request(app)
+      .post("/api/sync/import")
+      .send({ store: "gog", text: "title,playtime_hours\nDeep Rock Galactic,40\nBriefly Tried,1" });
+    expect(res.body.promoted).toBe(1);
+
+    const games = await request(app).get("/api/games");
+    const byTitle = Object.fromEntries(
+      games.body.games.map((g: { title: string; status: string }) => [g.title, g.status]),
+    );
+    expect(byTitle["Deep Rock Galactic"]).toBe("playing");
+    expect(byTitle["Briefly Tried"]).toBe("unplayed");
+  });
+
+  it("reports promoted: 0 for Epic, which carries no playtime", async () => {
+    const res = await request(app).post("/api/sync/epic/manual").send({ titles: "Control" });
+    expect(res.body.promoted).toBe(0);
+  });
+
   it("POST /api/sync/epic/manual parses pasted titles and merges duplicates", async () => {
     seed([{ title: "Portal 2" }]);
     const res = await request(app)
@@ -306,6 +357,17 @@ describe("sync routes", () => {
     expect(res.body.library).toMatchObject({ total: 2, steam: 1, epic: 1 });
     expect(res.body.enrichment).toMatchObject({ running: false });
     expect(res.body.config).toHaveProperty("steamConfigured");
+  });
+
+  it("GET /api/sync/status counts games still awaiting enrichment", async () => {
+    seed([{ title: "A" }, { title: "B" }]);
+    const before = await request(app).get("/api/sync/status");
+    expect(before.body.library.enrich_pending).toBe(2);
+
+    getDb().prepare("UPDATE games SET enrich_status = 'done' WHERE title = 'A'").run();
+    const after = await request(app).get("/api/sync/status");
+    expect(after.body.library.enrich_pending).toBe(1);
+    expect(after.body.library.enriched).toBe(1);
   });
 });
 

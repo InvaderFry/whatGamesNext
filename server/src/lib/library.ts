@@ -9,7 +9,38 @@ import type { ImportedGame } from "./import.js";
  * on both stores collapses into a single row with store='both'.
  */
 
-export function upsertSteamGames(games: SteamOwnedGame[]): { added: number; updated: number } {
+/**
+ * Two hours — Steam's own refund window, and a fair line between "launched it
+ * once to see if it runs" and "actually started playing this".
+ */
+export const PLAYED_THRESHOLD_MINUTES = 120;
+
+/**
+ * Stores report playtime but never whether you consider a game started, so a
+ * game with real hours on it would otherwise sit at 'unplayed' forever.
+ *
+ * Only promotes rows the user has never touched: `status_changed_at` is written
+ * solely by the PATCH route, so a NULL there means the current status was
+ * inferred rather than chosen. It is deliberately left NULL here — this is still
+ * an inference, and a later sync should be free to keep managing it.
+ *
+ * Returns the number of games promoted.
+ */
+export function promoteStartedGames(): number {
+  return getDb()
+    .prepare(
+      `UPDATE games SET status = 'playing'
+       WHERE status = 'unplayed' AND status_changed_at IS NULL
+         AND playtime_minutes >= @threshold`,
+    )
+    .run({ threshold: PLAYED_THRESHOLD_MINUTES }).changes;
+}
+
+export function upsertSteamGames(games: SteamOwnedGame[]): {
+  added: number;
+  updated: number;
+  promoted: number;
+} {
   const db = getDb();
   const now = new Date().toISOString();
   let added = 0;
@@ -50,7 +81,7 @@ export function upsertSteamGames(games: SteamOwnedGame[]): { added: number; upda
     }
   });
   tx();
-  return { added, updated };
+  return { added, updated, promoted: promoteStartedGames() };
 }
 
 export function upsertEpicGames(games: EpicGame[]): { added: number; updated: number } {
@@ -101,7 +132,7 @@ export type ImportStore = "gog" | "itch" | "other";
 export function upsertImportedGames(
   games: ImportedGame[],
   store: ImportStore,
-): { added: number; updated: number } {
+): { added: number; updated: number; promoted: number } {
   const db = getDb();
   const now = new Date().toISOString();
   let added = 0;
@@ -134,7 +165,7 @@ export function upsertImportedGames(
     }
   });
   tx();
-  return { added, updated };
+  return { added, updated, promoted: promoteStartedGames() };
 }
 
 export interface GameFilters {

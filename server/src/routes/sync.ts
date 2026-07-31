@@ -9,7 +9,14 @@ import {
   type ImportStore,
 } from "../lib/library.js";
 import { parseImportText } from "../lib/import.js";
-import { startEnrichment, getEnrichProgress, retryFailed, refreshAll } from "../lib/enrich.js";
+import {
+  startEnrichment,
+  getEnrichProgress,
+  getLastRun,
+  getInterruptedRun,
+  retryFailed,
+  refreshAll,
+} from "../lib/enrich.js";
 import { env } from "../env.js";
 import { getSetting } from "../lib/settings.js";
 
@@ -29,7 +36,8 @@ syncRouter.post("/sync/epic", async (_req, res) => {
   try {
     const games = await fetchEpicGames();
     const result = upsertEpicGames(games);
-    res.json({ source: "epic", fetched: games.length, ...result });
+    // Epic carries no playtime, so there is nothing to infer a status from.
+    res.json({ source: "epic", fetched: games.length, ...result, promoted: 0 });
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : String(err) });
   }
@@ -45,7 +53,7 @@ syncRouter.post("/sync/epic/manual", (req, res) => {
   }
   const titles = parseManualTitles(text);
   const result = upsertEpicGames(titles.map((t) => ({ appName: "", title: t })));
-  res.json({ source: "epic-manual", fetched: titles.length, ...result });
+  res.json({ source: "epic-manual", fetched: titles.length, ...result, promoted: 0 });
 });
 
 const IMPORT_STORES: ImportStore[] = ["gog", "itch", "other"];
@@ -93,13 +101,16 @@ syncRouter.get("/sync/status", (_req, res) => {
         SUM(CASE WHEN store IN ('epic','both') THEN 1 ELSE 0 END) AS epic,
         SUM(CASE WHEN store IN ('gog','itch','other') THEN 1 ELSE 0 END) AS other,
         SUM(CASE WHEN enrich_status = 'done' THEN 1 ELSE 0 END) AS enriched,
-        SUM(CASE WHEN enrich_status = 'failed' THEN 1 ELSE 0 END) AS enrich_failed
+        SUM(CASE WHEN enrich_status = 'failed' THEN 1 ELSE 0 END) AS enrich_failed,
+        SUM(CASE WHEN enrich_status = 'pending' THEN 1 ELSE 0 END) AS enrich_pending
       FROM games`,
     )
     .get();
   res.json({
     library: counts,
     enrichment: getEnrichProgress(),
+    lastRun: getLastRun(),
+    interrupted: getInterruptedRun(),
     config: {
       steamConfigured: !!(getSetting("steam_api_key") && getSetting("steam_id")),
       rawgConfigured: !!getSetting("rawg_api_key"),

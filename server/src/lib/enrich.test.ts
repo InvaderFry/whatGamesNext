@@ -18,7 +18,14 @@ vi.mock("../sources/steam.js", async (importOriginal) => ({
 const { lookupRawg } = vi.mocked(await import("../sources/rawg.js"));
 const { lookupHltb } = vi.mocked(await import("../sources/hltb.js"));
 const { fetchReviewSummary } = vi.mocked(await import("../sources/steam.js"));
-const { startEnrichment, getEnrichProgress, retryFailed, refreshAll } = await import("./enrich.js");
+const {
+  startEnrichment,
+  getEnrichProgress,
+  getLastRun,
+  getInterruptedRun,
+  retryFailed,
+  refreshAll,
+} = await import("./enrich.js");
 
 function seed(games: Partial<GameRow>[]) {
   const insert = getDb().prepare(`
@@ -159,6 +166,117 @@ describe("startEnrichment", () => {
     expect(lookupHltb).toHaveBeenCalledTimes(3);
     // A dead length source must not fail the games themselves.
     expect(row("E").enrich_status).toBe("done");
+  });
+});
+
+describe("pacing and concurrency", () => {
+  it("overlaps work across the different sources", async () => {
+    settings.set("rawg_api_key", "key");
+    seed([
+      { title: "A", steam_appid: 1 },
+      { title: "B", steam_appid: 2 },
+      { title: "C", steam_appid: 3 },
+    ]);
+
+    let inFlight = 0;
+    let peak = 0;
+    // Slower than a lane's own interval, which is the case that matters: a
+    // sluggish source used to add its full latency to every game in turn.
+    const track = async () => {
+      peak = Math.max(peak, ++inFlight);
+      await new Promise((r) => setTimeout(r, 1500));
+      inFlight--;
+    };
+    lookupRawg.mockImplementation(async () => {
+      await track();
+      return null;
+    });
+    lookupHltb.mockImplementation(async () => {
+      await track();
+      return null;
+    });
+    fetchReviewSummary.mockImplementation(async () => {
+      await track();
+      return { reviewPct: null, reviewCount: null };
+    });
+
+    await runQueue();
+
+    // Each host keeps its own pace, so the gain is one game's RAWG call
+    // overlapping another's HLTB call rather than queueing behind it.
+    expect(peak).toBeGreaterThan(1);
+    expect(getEnrichProgress()).toMatchObject({ done: 3, failed: 0 });
+  });
+
+  it("still spaces out calls to any single host", async () => {
+    settings.set("rawg_api_key", "key");
+    seed([{ title: "A" }, { title: "B" }, { title: "C" }]);
+
+    const calledAt: number[] = [];
+    lookupRawg.mockImplementation(async () => {
+      calledAt.push(Date.now());
+      return null;
+    });
+
+    await runQueue();
+
+    expect(calledAt).toHaveLength(3);
+    // Concurrency must not turn into a burst against one API.
+    for (let i = 1; i < calledAt.length; i++) {
+      expect(calledAt[i] - calledAt[i - 1]).toBeGreaterThanOrEqual(1000);
+    }
+  });
+
+  it("estimates the time left from the rate actually achieved", async () => {
+    settings.set("rawg_api_key", "key");
+    seed(Array.from({ length: 12 }, (_, i) => ({ title: `Game ${i}` })));
+
+    startEnrichment();
+    // Let part of the queue drain, then read the estimate mid-run.
+    await vi.advanceTimersByTimeAsync(3000);
+    const mid = getEnrichProgress();
+    expect(mid.running).toBe(true);
+    expect(mid.etaSeconds).toBeGreaterThan(0);
+
+    await vi.runAllTimersAsync();
+    // Nothing left to wait for once the queue drains.
+    expect(getEnrichProgress().etaSeconds).toBeNull();
+  });
+});
+
+describe("run history", () => {
+  it("records the outcome of a completed run", async () => {
+    settings.set("rawg_api_key", "key");
+    seed([{ title: "Fine" }, { title: "Broken" }]);
+    getDb().prepare("UPDATE games SET genres = '{oops' WHERE title = 'Broken'").run();
+
+    expect(getLastRun()).toBeNull();
+    await runQueue();
+
+    expect(getLastRun()).toMatchObject({ total: 2, done: 1, failed: 1 });
+    expect(getLastRun()?.finishedAt).toBeTruthy();
+  });
+
+  it("reports a run that never finished, and clears it once one does", async () => {
+    settings.set("rawg_api_key", "key");
+    seed([{ title: "A" }]);
+
+    // A run that starts but whose process dies leaves the marker behind. Nothing
+    // clears it, because the code that would have has already stopped running.
+    startEnrichment();
+    expect(getInterruptedRun()).toBeNull(); // still running, so not interrupted yet
+    await vi.runAllTimersAsync();
+    expect(getInterruptedRun()).toBeNull(); // drained cleanly
+
+    getDb()
+      .prepare("INSERT INTO sync_meta (key, value) VALUES ('enrich:running', ?)")
+      .run(JSON.stringify({ startedAt: new Date().toISOString(), total: 40 }));
+    expect(getInterruptedRun()).toMatchObject({ total: 40 });
+
+    retryFailed();
+    seed([{ title: "B" }]);
+    await runQueue();
+    expect(getInterruptedRun()).toBeNull();
   });
 });
 

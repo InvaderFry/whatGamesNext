@@ -21,26 +21,119 @@ export interface EnrichProgress {
   lastError: string | null;
   /** True after several consecutive HLTB errors — the scraper is likely broken or blocked. */
   hltbUnavailable: boolean;
+  /** Seconds left, from the rate actually achieved so far. Null until a game finishes. */
+  etaSeconds: number | null;
+}
+
+export interface LastRun {
+  finishedAt: string;
+  total: number;
+  done: number;
+  failed: number;
+}
+
+/** A run that was recorded as started but never finished — the process died mid-run. */
+export interface InterruptedRun {
+  startedAt: string;
+  total: number;
 }
 
 const HLTB_UNAVAILABLE_AFTER = 3;
 let hltbConsecutiveErrors = 0;
 
-const progress: EnrichProgress = {
+/** Games enriched at once. Each one makes up to three calls, to three
+ *  different hosts, so the work is almost entirely waiting on the network. */
+const CONCURRENCY = 3;
+
+const RUNNING_KEY = "enrich:running";
+const LAST_RUN_KEY = "enrich:last_run";
+
+const progress = {
   running: false,
   total: 0,
   done: 0,
   failed: 0,
-  current: null,
-  lastError: null,
+  current: null as string | null,
+  lastError: null as string | null,
   hltbUnavailable: false,
 };
 
+let startedAtMs: number | null = null;
+
 export function getEnrichProgress(): EnrichProgress {
-  return { ...progress };
+  const completed = progress.done + progress.failed;
+  let etaSeconds: number | null = null;
+  // Measured rather than assumed: concurrency, a dead HLTB and a slow network
+  // all move the real rate around a lot.
+  if (progress.running && completed > 0 && startedAtMs != null) {
+    const perGame = (Date.now() - startedAtMs) / completed;
+    etaSeconds = Math.max(0, Math.round((perGame * (progress.total - completed)) / 1000));
+  }
+  return { ...progress, etaSeconds };
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Minimum gap between calls to a single host. Each source gets its own lane, so
+ * enriching several games at once never stacks requests onto one API — which is
+ * what the old global sleep really protected against, at the cost of
+ * serialising everything including calls to different hosts.
+ */
+class RateLimiter {
+  private nextSlot = 0;
+  constructor(private readonly intervalMs: number) {}
+
+  async take(): Promise<void> {
+    const now = Date.now();
+    const slot = Math.max(now, this.nextSlot);
+    this.nextSlot = slot + this.intervalMs;
+    if (slot > now) await sleep(slot - now);
+  }
+
+  reset(): void {
+    this.nextSlot = 0;
+  }
+}
+
+// RAWG's free tier and HLTB's unofficial endpoint both tolerate roughly one
+// request a second. Steam's review summary is more generous.
+const limiters = {
+  rawg: new RateLimiter(1000),
+  hltb: new RateLimiter(1000),
+  steam: new RateLimiter(400),
+};
+
+function readMeta(key: string): string | null {
+  const row = getDb().prepare("SELECT value FROM sync_meta WHERE key = ?").get(key) as
+    { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+function writeMeta(key: string, value: string): void {
+  getDb()
+    .prepare(
+      "INSERT INTO sync_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .run(key, value);
+}
+
+/** The outcome of the last completed run, for when nothing is currently going. */
+export function getLastRun(): LastRun | null {
+  const raw = readMeta(LAST_RUN_KEY);
+  return raw ? (JSON.parse(raw) as LastRun) : null;
+}
+
+/**
+ * Enrichment lives in-process, so a restart mid-run leaves the queue stopped
+ * with no trace. The start marker is written to the database and only cleared
+ * when the queue drains, so finding one at rest means the last run died.
+ */
+export function getInterruptedRun(): InterruptedRun | null {
+  if (progress.running) return null;
+  const raw = readMeta(RUNNING_KEY);
+  return raw ? (JSON.parse(raw) as InterruptedRun) : null;
+}
 
 export function startEnrichment(): { started: boolean } {
   if (progress.running) return { started: false };
@@ -56,16 +149,40 @@ export function startEnrichment(): { started: boolean } {
   progress.lastError = null;
   progress.hltbUnavailable = false;
   hltbConsecutiveErrors = 0;
+  startedAtMs = Date.now();
+  // A fresh run shouldn't inherit the tail of the last one's pacing.
+  for (const limiter of Object.values(limiters)) limiter.reset();
+
+  const startedAt = new Date().toISOString();
+  writeMeta(RUNNING_KEY, JSON.stringify({ startedAt, total: pending.length }));
 
   void runQueue(pending).finally(() => {
     progress.running = false;
     progress.current = null;
+    getDb().prepare("DELETE FROM sync_meta WHERE key = ?").run(RUNNING_KEY);
+    writeMeta(
+      LAST_RUN_KEY,
+      JSON.stringify({
+        finishedAt: new Date().toISOString(),
+        total: progress.total,
+        done: progress.done,
+        failed: progress.failed,
+      }),
+    );
   });
   return { started: true };
 }
 
 async function runQueue(games: GameRow[]) {
-  for (const game of games) {
+  const queue = [...games];
+  await Promise.all(Array.from({ length: CONCURRENCY }, () => worker(queue)));
+}
+
+async function worker(queue: GameRow[]) {
+  for (;;) {
+    const game = queue.shift();
+    if (!game) return;
+    // With several games in flight this is whichever started most recently.
     progress.current = game.title;
     try {
       await enrichOne(game);
@@ -77,9 +194,6 @@ async function runQueue(games: GameRow[]) {
         .prepare("UPDATE games SET enrich_status = 'failed', enrich_error = ? WHERE id = ?")
         .run(String(err), game.id);
     }
-    // RAWG free tier and HLTB both tolerate ~1 req/s; each game makes
-    // up to 3 API calls, so pace conservatively.
-    await sleep(1200);
   }
 }
 
@@ -90,12 +204,17 @@ async function enrichOne(game: GameRow) {
   // keyless and still worth running, but the game stays 'pending' so adding a
   // key later backfills it — 'done' would strand it, since only failures requeue.
   const hasRawgKey = !!getSetting("rawg_api_key");
-  const rawg = hasRawgKey ? await lookupRawg(game.title).catch(() => null) : null;
+  let rawg = null;
+  if (hasRawgKey) {
+    await limiters.rawg.take();
+    rawg = await lookupRawg(game.title).catch(() => null);
+  }
 
   // HLTB is unofficial and flaky — missing lengths are acceptable, but flag
   // a run of consecutive errors so the UI can say lengths are being skipped.
   let hltb = null;
   if (!progress.hltbUnavailable) {
+    await limiters.hltb.take();
     try {
       hltb = await lookupHltb(game.title);
       hltbConsecutiveErrors = 0;
@@ -107,6 +226,7 @@ async function enrichOne(game: GameRow) {
 
   let review = { reviewPct: null as number | null, reviewCount: null as number | null };
   if (game.steam_appid) {
+    await limiters.steam.take();
     review = await fetchReviewSummary(game.steam_appid).catch(() => review);
   }
 
