@@ -78,6 +78,9 @@ describe("Recommend", () => {
     expect(params.get("w_unplayed")).toBe("0.8");
     expect(params.get("w_lengthFit")).toBe("0.6");
     expect(params.get("w_recency")).toBe("0.3");
+    // These mirror DEFAULT_WEIGHTS in server/src/lib/score.ts by hand, so this
+    // is the only thing that would catch the two drifting apart.
+    expect(params.get("w_taste")).toBe("0.7");
   });
 
   it("refetches with an adjusted weight", async () => {
