@@ -15,6 +15,14 @@ vi.mock("../sources/steam.js", async (importOriginal) => {
   };
 });
 
+// The refresh/retry routes kick off the background enrichment queue. Stub just
+// the queue so route tests never hit the network or leak a still-running job
+// into the next test — the queue itself is covered in lib/enrich.test.ts.
+vi.mock("../lib/enrich.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/enrich.js")>();
+  return { ...actual, startEnrichment: vi.fn(() => ({ started: true })) };
+});
+
 const app = createApp();
 
 interface SeedGame {
@@ -251,6 +259,18 @@ describe("sync routes", () => {
       (await request(app).post("/api/sync/import").send({ store: "amazon", text: "x" })).status,
     ).toBe(400);
     expect((await request(app).post("/api/sync/import").send({ store: "gog" })).status).toBe(400);
+  });
+
+  it("POST /api/sync/enrich/refresh requeues already-enriched games", async () => {
+    seed([{ title: "A" }, { title: "B" }]);
+    getDb().prepare("UPDATE games SET enrich_status = 'done'").run();
+
+    const res = await request(app).post("/api/sync/enrich/refresh");
+    expect(res.status).toBe(200);
+    expect(res.body.requeued).toBe(2);
+
+    const status = await request(app).get("/api/sync/status");
+    expect(status.body.library.enriched).toBe(0);
   });
 
   it("GET /api/sync/status reports library counts and enrichment state", async () => {

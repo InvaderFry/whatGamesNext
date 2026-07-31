@@ -300,7 +300,8 @@ export default function Settings() {
               <a href="https://rawg.io/apidocs" target="_blank" rel="noreferrer">
                 rawg.io/apidocs
               </a>
-              , enter it under API keys above) — ratings will be skipped.
+              , enter it under API keys above) — ratings will be skipped and games stay unenriched
+              so they can be completed once you add a key.
             </span>
           )}
         </p>
@@ -329,6 +330,23 @@ export default function Settings() {
               }}
             >
               Retry {lib.enrich_failed} failed
+            </button>
+          )}
+          {lib && lib.enriched > 0 && (
+            <button
+              className="btn secondary"
+              title="Re-fetch ratings, lengths and review scores for every game"
+              disabled={busy !== null || enrich?.running}
+              onClick={() => {
+                void run(
+                  "refresh",
+                  api.refreshEnrich,
+                  (r: { requeued: number }) => `Refreshing data for ${r.requeued} games.`,
+                );
+                startPolling();
+              }}
+            >
+              Refresh game data
             </button>
           )}
         </div>

@@ -21,22 +21,42 @@ const ROMAN: Record<string, string> = {
   xv: "15",
 };
 
-const EDITION_SUFFIXES =
-  /\b(game of the year|goty|definitive|deluxe|ultimate|complete|enhanced|remastered|anniversary|gold|premium|standard|special|collector'?s?|digital|legendary|royal)\s*(edition|cut|version)?\b/g;
+// Re-release markers that only mean "edition" when the word "edition" (or "cut"
+// / "version") actually follows. Stripping them bare would mangle real titles:
+// Ultimate Chicken Horse, Persona 5 Royal, Gold Rush, Special Ops, Legendary.
+const QUALIFIED_EDITIONS =
+  /\b(game of the year|definitive|deluxe|ultimate|complete|enhanced|anniversary|gold|premium|standard|special|collector'?s?|digital|legendary|royal)\s+(edition|cut|version)\b/g;
+
+// Markers unambiguous enough to drop on their own.
+const BARE_EDITIONS = /\b(goty|game of the year|remastered?)\b/g;
 
 export function normalizeTitle(title: string): string {
-  return title
+  // Punctuation is folded to spaces first so the edition patterns match across
+  // separators too ("Control: Ultimate Edition", "Wild Hunt - GOTY Edition").
+  // Apostrophes survive this pass so "collector's edition" still matches.
+  const words = title
     .toLowerCase()
     .replace(/[™®©]/g, "") // ™ ® ©
     .replace(/[’‘]/g, "'")
-    .replace(EDITION_SUFFIXES, "")
     .replace(/&/g, " and ")
+    .replace(/[^a-z0-9']+/g, " ")
+    .replace(QUALIFIED_EDITIONS, " ")
+    .replace(BARE_EDITIONS, " ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
-    .replace(/\s+/g, " ")
+    .replace(/\s+/g, " ");
+
+  const normalized = words
     .split(" ")
+    .filter(Boolean)
     .map((word) => ROMAN[word] ?? word)
     .join(" ");
+  if (normalized) return normalized;
+
+  // Titles built entirely from characters we strip (CJK-only names, symbols)
+  // would normalize to "" — and callers key rows on this value, so an empty
+  // result silently drops the game. Fall back to the raw title instead.
+  return title.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 /** Levenshtein distance, iterative two-row implementation. */

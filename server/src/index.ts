@@ -11,8 +11,8 @@ if (env.demo) {
   if (seeded) console.log(`[demo] seeded ${seeded} sample games`);
 }
 
-app.listen(env.port, () => {
-  console.log(`whatGamesNext server listening on http://localhost:${env.port}`);
+app.listen(env.port, env.host, () => {
+  console.log(`whatGamesNext server listening on http://${env.host}:${env.port}`);
   if (!env.steamApiKey) {
     console.log("  (STEAM_API_KEY not set — configure Steam in the Settings tab or .env)");
   }
