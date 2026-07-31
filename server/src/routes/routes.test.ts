@@ -36,14 +36,15 @@ interface SeedGame {
   genres?: string[];
   tags?: string[];
   playtime_minutes?: number;
+  release_date?: string | null;
 }
 
 function seed(games: SeedGame[]) {
   const insert = getDb().prepare(`
     INSERT INTO games (title, normalized_title, store, status, hidden, metacritic,
-      hltb_main, difficulty, genres, tags, playtime_minutes)
+      hltb_main, difficulty, genres, tags, playtime_minutes, release_date)
     VALUES (@title, @norm, @store, @status, @hidden, @metacritic,
-      @hltb_main, @difficulty, @genres, @tags, @playtime_minutes)
+      @hltb_main, @difficulty, @genres, @tags, @playtime_minutes, @release_date)
   `);
   for (const g of games) {
     insert.run({
@@ -58,6 +59,7 @@ function seed(games: SeedGame[]) {
       genres: JSON.stringify(g.genres ?? []),
       tags: JSON.stringify(g.tags ?? []),
       playtime_minutes: g.playtime_minutes ?? 0,
+      release_date: g.release_date ?? null,
     });
   }
 }
@@ -205,6 +207,30 @@ describe("GET /api/recommend", () => {
     );
     const res = await request(app).get("/api/recommend?limit=2");
     expect(res.body.count).toBe(2);
+    // `total` is pre-slice, so the UI can report how many games matched.
+    expect(res.body.total).toBe(5);
+  });
+
+  it("applies the genre filter before scoring", async () => {
+    seed([
+      { title: "Actioner", metacritic: 90, hltb_main: 10, genres: ["Action"] },
+      { title: "Puzzler", metacritic: 90, hltb_main: 10, genres: ["Puzzle"] },
+    ]);
+    const res = await request(app).get("/api/recommend?genre=action");
+    expect(res.body.total).toBe(1);
+    expect(res.body.results[0].game.title).toBe("Actioner");
+  });
+
+  it("reorders results when the weights change", async () => {
+    seed([
+      { title: "Old Great", metacritic: 95, hltb_main: 10, release_date: "2005-01-01" },
+      { title: "New Good", metacritic: 78, hltb_main: 10, release_date: "2024-01-01" },
+    ]);
+    const byRating = await request(app).get("/api/recommend?w_rating=2&w_recency=0");
+    expect(byRating.body.results[0].game.title).toBe("Old Great");
+
+    const byRecency = await request(app).get("/api/recommend?w_rating=0&w_recency=2");
+    expect(byRecency.body.results[0].game.title).toBe("New Good");
   });
 });
 

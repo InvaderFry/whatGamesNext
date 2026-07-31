@@ -55,10 +55,14 @@ recommendRouter.get("/recommend", (req, res) => {
   });
 
   const limit = q.limit != null && !Number.isNaN(Number(q.limit)) ? Number(q.limit) : 25;
-  const results = recommend(games, mode, { budgetHours, weights }).slice(0, limit);
+  const scored = recommend(games, mode, { budgetHours, weights });
+  const results = scored.slice(0, limit);
   res.json({
     mode,
     count: results.length,
+    // Pre-slice, so callers can say how many games actually matched the filters
+    // rather than just how many fit on the page.
+    total: scored.length,
     results: results.map((r) => ({
       score: Math.round(r.score * 1000) / 1000,
       reason: r.reason,

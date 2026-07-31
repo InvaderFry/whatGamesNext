@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Library from "./Library";
 import { api } from "../api";
@@ -57,5 +57,75 @@ describe("Library", () => {
     games.mockResolvedValue({ count: 0, games: [] });
     render(<Library />);
     expect(await screen.findByText(/No games found/)).toBeInTheDocument();
+  });
+
+  it("requests a single page rather than the whole library", async () => {
+    render(<Library />);
+    await screen.findByText("Hades");
+
+    const params = games.mock.calls[0][0];
+    expect(params.get("limit")).toBe("60");
+    expect(params.get("offset")).toBe("0");
+  });
+
+  it("pages forward and back", async () => {
+    const user = userEvent.setup();
+    games.mockResolvedValue({ count: 120, games: [makeGame()] });
+    render(<Library />);
+    await screen.findByText("Hades");
+
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    expect(games.mock.calls.at(-1)![0].get("offset")).toBe("60");
+
+    await user.click(screen.getByRole("button", { name: "Previous page" }));
+    expect(games.mock.calls.at(-1)![0].get("offset")).toBe("0");
+  });
+
+  it("returns to the first page when a filter changes", async () => {
+    const user = userEvent.setup();
+    games.mockResolvedValue({ count: 120, games: [makeGame()] });
+    render(<Library />);
+    await screen.findByText("Hades");
+
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    expect(games.mock.calls.at(-1)![0].get("offset")).toBe("60");
+
+    await user.selectOptions(screen.getByLabelText("Filter by status"), "unplayed");
+    const params = games.mock.calls.at(-1)![0];
+    expect(params.get("status")).toBe("unplayed");
+    expect(params.get("offset")).toBe("0");
+  });
+
+  it("keeps the chosen page when a pending search debounce resolves", async () => {
+    games.mockResolvedValue({ count: 120, games: [makeGame()] });
+    render(<Library />);
+    await screen.findByText("Hades");
+
+    // The debounce armed on mount is still pending at this point; when it
+    // resolves it must not drag the user back to the first page.
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(games.mock.calls.at(-1)![0].get("offset")).toBe("60"));
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(games.mock.calls.at(-1)![0].get("offset")).toBe("60");
+  });
+
+  it("hides the pager controls when everything fits on one page", async () => {
+    render(<Library />);
+    expect(await screen.findByText("1 game")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
+  });
+
+  it("debounces the search box into a single request", async () => {
+    const user = userEvent.setup();
+    render(<Library />);
+    await screen.findByText("Hades");
+    expect(games).toHaveBeenCalledTimes(1);
+
+    await user.type(screen.getByLabelText("Search titles"), "hade");
+    await waitFor(() => expect(games.mock.calls.at(-1)![0].get("search")).toBe("hade"));
+
+    // Four keystrokes; undebounced this would be five calls in total.
+    expect(games).toHaveBeenCalledTimes(2);
   });
 });

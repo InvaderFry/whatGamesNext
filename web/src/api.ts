@@ -31,6 +31,23 @@ export interface ScoreBreakdown {
   recency: number;
 }
 
+export type Weights = ScoreBreakdown;
+
+/** Mirrors DEFAULT_WEIGHTS in server/src/lib/score.ts, which is the source of truth. */
+export const DEFAULT_WEIGHTS: Weights = {
+  rating: 1,
+  unplayed: 0.8,
+  lengthFit: 0.6,
+  recency: 0.3,
+};
+
+export const WEIGHT_LABELS: [keyof Weights, string][] = [
+  ["rating", "Rating"],
+  ["unplayed", "Untouched"],
+  ["lengthFit", "Length fit"],
+  ["recency", "Recency"],
+];
+
 export interface Recommendation {
   score: number;
   reason: string;
@@ -109,7 +126,9 @@ export const api = {
       body: JSON.stringify(patch),
     }),
   recommend: (params: URLSearchParams) =>
-    request<{ mode: string; count: number; results: Recommendation[] }>(`/api/recommend?${params}`),
+    request<{ mode: string; count: number; total: number; results: Recommendation[] }>(
+      `/api/recommend?${params}`,
+    ),
   syncStatus: () => request<SyncStatus>("/api/sync/status"),
   syncSteam: () =>
     request<{ fetched: number; added: number; updated: number }>("/api/sync/steam", {

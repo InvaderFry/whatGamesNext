@@ -136,6 +136,20 @@ button.btn.secondary {
   gap: 14px;
 }
 
+.pager {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  margin: 20px 0 8px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
