@@ -1,6 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type SettingsMap, type SyncResult, type SyncStatus } from "../api";
 
+function formatEta(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
+function formatWhen(iso: string): string {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
 const SETTING_FIELDS: [keyof SettingsMap, string, string][] = [
   ["steam_api_key", "Steam API key", "From steamcommunity.com/dev/apikey"],
   ["steam_id", "SteamID64", "Your 17-digit SteamID (steamid.io can find it)"],
@@ -386,11 +403,28 @@ export default function Settings() {
             </button>
           )}
         </div>
+        {status?.interrupted && !enrich?.running && (
+          <p className="hint status-warn">
+            An enrichment run was interrupted — the server restarted while it was working. Nothing
+            was lost: {pending} game{pending === 1 ? "" : "s"} still pending, and starting again
+            picks up where it stopped.
+          </p>
+        )}
+        {!enrich?.running && status?.lastRun && (
+          <p className="hint">
+            {/* "processed", not "enriched": a game with no RAWG key available is
+                worked through successfully but deliberately stays pending. */}
+            Last run: {status.lastRun.done} game{status.lastRun.done === 1 ? "" : "s"} processed
+            {status.lastRun.failed > 0 && `, ${status.lastRun.failed} failed`}, finished{" "}
+            {formatWhen(status.lastRun.finishedAt)}.
+          </p>
+        )}
         {enrich?.running && (
           <>
             <p className="hint">
               {enrich.done + enrich.failed} / {enrich.total}
               {enrich.current && <> — currently: {enrich.current}</>}
+              {enrich.etaSeconds != null && <> — about {formatEta(enrich.etaSeconds)} left</>}
             </p>
             <div className="progress-bar">
               <div

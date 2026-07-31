@@ -22,7 +22,10 @@ const syncStatus = vi.mocked(api.syncStatus);
 const syncSteam = vi.mocked(api.syncSteam);
 const startEnrich = vi.mocked(api.startEnrich);
 
-function status(overrides: Partial<SyncStatus["library"]> = {}): SyncStatus {
+function status(
+  overrides: Partial<SyncStatus["library"]> = {},
+  rest: Partial<Omit<SyncStatus, "library" | "config">> = {},
+): SyncStatus {
   return {
     library: {
       total: 10,
@@ -42,7 +45,11 @@ function status(overrides: Partial<SyncStatus["library"]> = {}): SyncStatus {
       current: null,
       lastError: null,
       hltbUnavailable: false,
+      etaSeconds: null,
+      ...rest.enrichment,
     },
+    lastRun: rest.lastRun ?? null,
+    interrupted: rest.interrupted ?? null,
     config: { steamConfigured: true, rawgConfigured: true, demo: false },
   };
 }
@@ -127,6 +134,58 @@ describe("Settings", () => {
     await user.click(screen.getByRole("button", { name: "Sync Steam library" }));
     await screen.findByText(/87 new/);
     expect(screen.queryByRole("button", { name: /Enrich .* now/ })).not.toBeInTheDocument();
+  });
+
+  it("shows how much longer a running enrichment has to go", async () => {
+    syncStatus.mockResolvedValue(
+      status(
+        {},
+        {
+          enrichment: {
+            running: true,
+            total: 100,
+            done: 40,
+            failed: 0,
+            current: "Hades",
+            lastError: null,
+            hltbUnavailable: false,
+            etaSeconds: 900,
+          },
+        },
+      ),
+    );
+    render(<Settings />);
+    expect(await screen.findByText(/currently: Hades/)).toBeInTheDocument();
+    expect(screen.getByText(/about 15 min left/)).toBeInTheDocument();
+  });
+
+  it("explains an interrupted run instead of just showing nothing", async () => {
+    syncStatus.mockResolvedValue(
+      status({}, { interrupted: { startedAt: new Date().toISOString(), total: 500 } }),
+    );
+    render(<Settings />);
+    expect(await screen.findByText(/enrichment run was interrupted/)).toBeInTheDocument();
+    expect(screen.getByText(/10 games still pending/)).toBeInTheDocument();
+  });
+
+  it("summarises the last completed run", async () => {
+    syncStatus.mockResolvedValue(
+      status(
+        {},
+        {
+          lastRun: {
+            finishedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+            total: 50,
+            done: 48,
+            failed: 2,
+          },
+        },
+      ),
+    );
+    render(<Settings />);
+    expect(
+      await screen.findByText(/48 games processed, 2 failed, finished 5 min ago/),
+    ).toBeInTheDocument();
   });
 
   it("reports games promoted to playing in the sync message", async () => {

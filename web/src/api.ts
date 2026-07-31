@@ -82,7 +82,11 @@ export interface SyncStatus {
     current: string | null;
     lastError: string | null;
     hltbUnavailable: boolean;
+    etaSeconds: number | null;
   };
+  lastRun: { finishedAt: string; total: number; done: number; failed: number } | null;
+  /** Set when a previous run died mid-flight — the server restarted while enriching. */
+  interrupted: { startedAt: string; total: number } | null;
   config: {
     steamConfigured: boolean;
     rawgConfigured: boolean;

@@ -9,7 +9,14 @@ import {
   type ImportStore,
 } from "../lib/library.js";
 import { parseImportText } from "../lib/import.js";
-import { startEnrichment, getEnrichProgress, retryFailed, refreshAll } from "../lib/enrich.js";
+import {
+  startEnrichment,
+  getEnrichProgress,
+  getLastRun,
+  getInterruptedRun,
+  retryFailed,
+  refreshAll,
+} from "../lib/enrich.js";
 import { env } from "../env.js";
 import { getSetting } from "../lib/settings.js";
 
@@ -102,6 +109,8 @@ syncRouter.get("/sync/status", (_req, res) => {
   res.json({
     library: counts,
     enrichment: getEnrichProgress(),
+    lastRun: getLastRun(),
+    interrupted: getInterruptedRun(),
     config: {
       steamConfigured: !!(getSetting("steam_api_key") && getSetting("steam_id")),
       rawgConfigured: !!getSetting("rawg_api_key"),

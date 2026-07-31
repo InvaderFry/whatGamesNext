@@ -66,9 +66,14 @@ a `.env` file (`cp .env.example .env`) — the Settings values win when both are
 
 ### First run
 
-1. Open **Settings**, click **Sync Steam library** (and Epic).
-2. Click **Start enrichment** — this fetches ratings/lengths for every game at ~1 request/sec, so a
-   big library takes a while. It's resumable; already-enriched games are skipped on later runs.
+1. Open **Settings**, click **Sync Steam library** (and Epic). It'll offer to enrich whatever it
+   brought in.
+2. Enrichment fetches ratings, lengths and review scores for every game. Each source is held to
+   about one request a second, but three games are worked at once so the sources are waited on in
+   parallel — roughly a game a second overall, or ~25 minutes for 1,500 games. A progress bar and
+   time estimate show while it runs.
+   It's resumable: results are saved per game, so an interrupted run picks up where it stopped and
+   already-enriched games are skipped.
 3. Go to **What next?** and pick a mode.
 
 ### Demo mode
