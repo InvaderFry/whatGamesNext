@@ -18,6 +18,7 @@ const facets = vi.mocked(api.facets);
 const patchGame = vi.mocked(api.patchGame);
 
 beforeEach(() => {
+  window.history.replaceState(null, "", "/");
   games.mockReset();
   facets.mockReset();
   patchGame.mockReset();
@@ -114,6 +115,60 @@ describe("Library", () => {
     render(<Library />);
     expect(await screen.findByText("1 game")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Next page" })).not.toBeInTheDocument();
+  });
+
+  it("restores filters and the page number from the URL", async () => {
+    window.history.replaceState(null, "", "/?status=unplayed&genre=Action&sort=title&page=2");
+    games.mockResolvedValue({ count: 120, games: [makeGame()] });
+    render(<Library />);
+    await screen.findByText("Hades");
+
+    const params = games.mock.calls[0][0];
+    expect(params.get("status")).toBe("unplayed");
+    expect(params.get("genre")).toBe("Action");
+    expect(params.get("sort")).toBe("title");
+    // page=2 in the URL is the second page, so the second block of 60.
+    expect(params.get("offset")).toBe("60");
+    expect(screen.getByLabelText("Filter by status")).toHaveValue("unplayed");
+  });
+
+  it("writes filter changes to the URL", async () => {
+    const user = userEvent.setup();
+    render(<Library />);
+    await screen.findByText("Hades");
+
+    await user.selectOptions(screen.getByLabelText("Filter by status"), "playing");
+    await waitFor(() => expect(window.location.search).toContain("status=playing"));
+  });
+
+  it("writes the page number one-based, and drops it on the first page", async () => {
+    const user = userEvent.setup();
+    games.mockResolvedValue({ count: 120, games: [makeGame()] });
+    render(<Library />);
+    await screen.findByText("Hades");
+
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => expect(window.location.search).toBe("?page=2"));
+
+    await user.click(screen.getByRole("button", { name: "Previous page" }));
+    await waitFor(() => expect(window.location.search).toBe(""));
+  });
+
+  it("leaves an untouched view with a clean URL", async () => {
+    render(<Library />);
+    await screen.findByText("Hades");
+    expect(window.location.search).toBe("");
+  });
+
+  it("puts the applied search in the URL, not every keystroke", async () => {
+    const user = userEvent.setup();
+    render(<Library />);
+    await screen.findByText("Hades");
+
+    await user.type(screen.getByLabelText("Search titles"), "hade");
+    expect(window.location.search).toBe("");
+
+    await waitFor(() => expect(window.location.search).toBe("?search=hade"));
   });
 
   it("debounces the search box into a single request", async () => {

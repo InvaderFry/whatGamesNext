@@ -104,6 +104,26 @@ export default function GameCard({
             ))}
           </div>
         )}
+        {/* Gated on the appid rather than the store: a "both" game is launchable,
+            a manually-imported or GOG one has no id to launch with. */}
+        {game.steam_appid != null && (
+          <div className="actions">
+            <a
+              href={`steam://rungameid/${game.steam_appid}`}
+              aria-label={`Launch ${game.title} in Steam`}
+            >
+              ▶ Play
+            </a>
+            <a
+              href={`https://store.steampowered.com/app/${game.steam_appid}/`}
+              target="_blank"
+              rel="noreferrer noopener"
+              aria-label={`Open ${game.title} on the Steam store`}
+            >
+              Store ↗
+            </a>
+          </div>
+        )}
         <div className="controls">
           <select
             value={game.status}
