@@ -8,6 +8,7 @@ import { syncRouter } from "./routes/sync.js";
 import { recommendRouter } from "./routes/recommend.js";
 import { settingsRouter } from "./routes/settings.js";
 import { statsRouter } from "./routes/stats.js";
+import { backupRouter } from "./routes/backup.js";
 
 export function createApp(): express.Express {
   const app = express();
@@ -19,6 +20,7 @@ export function createApp(): express.Express {
   app.use("/api", recommendRouter);
   app.use("/api", settingsRouter);
   app.use("/api", statsRouter);
+  app.use("/api", backupRouter);
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
 

@@ -15,13 +15,21 @@ export function listQueue(): GameRow[] {
     .all() as GameRow[];
 }
 
-function compact(db = getDb()): void {
+/**
+ * Renumber the list to 1..n, preserving order. Exported for restore, which
+ * writes back whatever positions a backup carried — a list exported with a
+ * game since deleted would otherwise come back with a gap in it.
+ */
+export function compactQueue(db = getDb()): void {
+  // Ranked rather than counted: a restore can write a position another game is
+  // already sitting on, and counting rows at-or-before a tie hands both of them
+  // the same number. ROW_NUMBER breaks the tie on id and always lands on 1..n.
   db.exec(`
-    UPDATE games SET queue_position = (
-      SELECT COUNT(*) FROM games AS earlier
-      WHERE earlier.queue_position IS NOT NULL
-        AND earlier.queue_position <= games.queue_position
+    WITH ranked AS (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY queue_position, id) AS pos
+      FROM games WHERE queue_position IS NOT NULL
     )
+    UPDATE games SET queue_position = (SELECT pos FROM ranked WHERE ranked.id = games.id)
     WHERE queue_position IS NOT NULL
   `);
 }
@@ -48,7 +56,7 @@ export function removeFromQueue(id: number): boolean {
       .prepare("UPDATE games SET queue_position = NULL WHERE id = ? AND queue_position IS NOT NULL")
       .run(id);
     if (!info.changes) return false;
-    compact(db);
+    compactQueue(db);
     return true;
   })();
 }

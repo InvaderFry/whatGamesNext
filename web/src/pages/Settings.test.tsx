@@ -14,6 +14,7 @@ vi.mock("../api", async (importOriginal) => {
       settings: vi.fn(),
       syncSteam: vi.fn(),
       startEnrich: vi.fn(),
+      restoreBackup: vi.fn(),
     },
   };
 });
@@ -21,6 +22,7 @@ vi.mock("../api", async (importOriginal) => {
 const syncStatus = vi.mocked(api.syncStatus);
 const syncSteam = vi.mocked(api.syncSteam);
 const startEnrich = vi.mocked(api.startEnrich);
+const restoreBackup = vi.mocked(api.restoreBackup);
 
 function status(
   overrides: Partial<SyncStatus["library"]> = {},
@@ -59,6 +61,7 @@ beforeEach(() => {
   syncStatus.mockReset();
   syncSteam.mockReset();
   startEnrich.mockReset();
+  restoreBackup.mockReset();
   syncStatus.mockResolvedValue(status());
   vi.mocked(api.settings).mockResolvedValue({
     steam_api_key: { configured: true, source: "settings", preview: "…1234" },
@@ -230,5 +233,53 @@ describe("Settings", () => {
 
     await user.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByText(/Control → Control/)).not.toBeInTheDocument();
+  });
+
+  it("restores a backup file and says what came back", async () => {
+    const user = userEvent.setup();
+    restoreBackup.mockResolvedValue({ restored: 12, unchanged: 3, notFound: [] });
+    render(<Settings />);
+    await screen.findByText(/10 games total/);
+
+    const file = new File(['{"version":1,"games":[]}'], "backup.json", {
+      type: "application/json",
+    });
+    await user.upload(screen.getByLabelText("Restore"), file);
+
+    expect(restoreBackup).toHaveBeenCalledWith('{"version":1,"games":[]}');
+    expect(await screen.findByText(/Restored 12 games/)).toBeInTheDocument();
+    expect(screen.getByText(/3 already matched the backup/)).toBeInTheDocument();
+  });
+
+  it("names the games a restore couldn't place, so you know to sync first", async () => {
+    const user = userEvent.setup();
+    restoreBackup.mockResolvedValue({
+      restored: 1,
+      unchanged: 0,
+      notFound: ["Hades", "Celeste"],
+    });
+    render(<Settings />);
+    await screen.findByText(/10 games total/);
+
+    await user.upload(
+      screen.getByLabelText("Restore"),
+      new File(["{}"], "backup.json", { type: "application/json" }),
+    );
+
+    expect(await screen.findByText(/Not in your library yet: Hades, Celeste/)).toBeInTheDocument();
+  });
+
+  it("surfaces a rejected backup file rather than failing quietly", async () => {
+    const user = userEvent.setup();
+    restoreBackup.mockRejectedValue(new Error("Hades: personal_rating must be between 1 and 10"));
+    render(<Settings />);
+    await screen.findByText(/10 games total/);
+
+    await user.upload(
+      screen.getByLabelText("Restore"),
+      new File(["bad"], "backup.csv", { type: "text/csv" }),
+    );
+
+    expect(await screen.findByText(/personal_rating must be between 1 and 10/)).toBeInTheDocument();
   });
 });

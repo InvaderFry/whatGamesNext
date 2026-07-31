@@ -166,6 +166,13 @@ export interface SettingInfo {
 
 export type SettingsMap = Record<"steam_api_key" | "steam_id" | "rawg_api_key", SettingInfo>;
 
+export interface RestoreSummary {
+  restored: number;
+  unchanged: number;
+  /** Titles in the file with nothing in the library to attach them to. */
+  notFound: string[];
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
   const body = await res.json().catch(() => ({}));
@@ -236,6 +243,14 @@ export const api = {
     request<{ requeued: number }>("/api/sync/enrich/retry-failed", { method: "POST" }),
   refreshEnrich: () =>
     request<{ requeued: number }>("/api/sync/enrich/refresh", { method: "POST" }),
+  /** A plain link, so the browser saves the file rather than the app buffering it. */
+  exportUrl: (format: "json" | "csv") => `/api/export?format=${format}`,
+  restoreBackup: (text: string) =>
+    request<RestoreSummary>("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    }),
 };
 
 export function formatPlaytime(minutes: number): string {

@@ -835,3 +835,68 @@ describe("settings routes", () => {
     expect((await request(app).put("/api/settings").send({ steam_id: 42 })).status).toBe(400);
   });
 });
+
+describe("backup and restore", () => {
+  /** Marks a game so it has something worth backing up. */
+  async function author(id: number) {
+    await request(app).patch(`/api/games/${id}`).send({ status: "finished" });
+    await request(app)
+      .patch(`/api/games/${id}`)
+      .send({ personal_rating: 9, notes: "one more run" });
+  }
+
+  it("serves the backup as a file the browser will download", async () => {
+    seed([{ title: "Hades" }]);
+    await author(1);
+
+    const res = await request(app).get("/api/export");
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-disposition"]).toMatch(
+      /attachment; filename="whatgamesnext-backup-\d{4}-\d{2}-\d{2}\.json"/,
+    );
+    expect(res.body.games).toHaveLength(1);
+    expect(res.body.games[0]).toMatchObject({ title: "Hades", personal_rating: 9 });
+  });
+
+  it("serves a CSV for a spreadsheet", async () => {
+    seed([{ title: "Hades" }]);
+    await author(1);
+
+    const res = await request(app).get("/api/export?format=csv");
+
+    expect(res.headers["content-disposition"]).toMatch(/\.csv"/);
+    expect(res.text.split("\n")[0]).toContain("personal_rating");
+    expect(res.text).toContain("one more run");
+  });
+
+  it("puts back what you wrote after the database was rebuilt", async () => {
+    seed([{ title: "Hades" }]);
+    await author(1);
+    const backup = (await request(app).get("/api/export")).body;
+
+    // What starting over actually looks like: delete data/games.db, sync again.
+    getDb().exec("DELETE FROM games");
+    seed([{ title: "Hades" }]);
+
+    const res = await request(app)
+      .post("/api/import")
+      .send({ text: JSON.stringify(backup) });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ restored: 1, notFound: [] });
+    const games = await request(app).get("/api/games");
+    expect(games.body.games[0]).toMatchObject({
+      status: "finished",
+      personal_rating: 9,
+      notes: "one more run",
+    });
+  });
+
+  it("says what is wrong with a file it won't take", async () => {
+    const res = await request(app).post("/api/import").send({ text: "not a backup" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/`title` column/);
+  });
+});

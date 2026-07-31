@@ -3,6 +3,7 @@ import {
   api,
   STORE_LABEL,
   type MergeNote,
+  type RestoreSummary,
   type SettingsMap,
   type SyncResult,
   type SyncStatus,
@@ -25,6 +26,19 @@ function formatWhen(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
+function summarizeRestore(r: RestoreSummary): string {
+  const parts = [`Restored ${r.restored} game${r.restored === 1 ? "" : "s"}.`];
+  if (r.unchanged > 0) parts.push(`${r.unchanged} already matched the backup.`);
+  // Naming them beats a count: the usual cause is a store not synced yet, and
+  // the titles are what tell you which one.
+  if (r.notFound.length > 0) {
+    const names = r.notFound.slice(0, 5).join(", ");
+    const rest = r.notFound.length > 5 ? ` and ${r.notFound.length - 5} more` : "";
+    parts.push(`Not in your library yet: ${names}${rest} — sync first, then restore again.`);
+  }
+  return parts.join(" ");
+}
+
 const SETTING_FIELDS: [keyof SettingsMap, string, string][] = [
   ["steam_api_key", "Steam API key", "From steamcommunity.com/dev/apikey"],
   ["steam_id", "SteamID64", "Your 17-digit SteamID (steamid.io can find it)"],
@@ -45,6 +59,7 @@ export default function Settings() {
   const [merged, setMerged] = useState<MergeNote[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const offerRef = useRef<HTMLDivElement | null>(null);
+  const restoreRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -109,6 +124,15 @@ export default function Settings() {
     });
     if (r && r.added > 0) setJustAdded(r.added);
     setMerged(r?.merged ?? []);
+  }
+
+  async function restore(file: File | undefined) {
+    if (!file) return;
+    const text = await file.text();
+    await run("restore", () => api.restoreBackup(text), summarizeRestore);
+    // Clearing the input means picking the same file again re-runs it, which is
+    // what you want after fixing a sync and retrying.
+    if (restoreRef.current) restoreRef.current.value = "";
   }
 
   async function saveSettings() {
@@ -371,6 +395,41 @@ export default function Settings() {
             Import titles
           </button>
         </div>
+      </div>
+
+      <div className="settings-card">
+        <h3>Backup</h3>
+        <p className="hint">
+          Your statuses, ratings, notes, shortlist, finish dates, hidden games and difficulty
+          overrides — the only things here that a re-sync can't rebuild. Games with nothing on them
+          are left out, since re-syncing brings those back as they were. JSON round-trips exactly;
+          CSV is the same data for a spreadsheet.
+        </p>
+        <div className="row">
+          <a className="btn" href={api.exportUrl("json")} download>
+            Download JSON
+          </a>
+          <a className="btn secondary" href={api.exportUrl("csv")} download>
+            Download CSV
+          </a>
+        </div>
+        <div className="row">
+          <label style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
+            <span style={{ minWidth: 110, fontSize: 13 }}>Restore</span>
+            <input
+              type="file"
+              accept=".json,.csv,application/json,text/csv"
+              disabled={busy !== null}
+              ref={restoreRef}
+              style={{ flex: 1 }}
+              onChange={(e) => void restore(e.target.files?.[0])}
+            />
+          </label>
+        </div>
+        <p className="hint">
+          A restore only fills in games you already have, so sync first if you're starting from an
+          empty library. Anything the file doesn't have a value for is left alone.
+        </p>
       </div>
 
       <div className="settings-card">

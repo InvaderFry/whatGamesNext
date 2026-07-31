@@ -43,6 +43,52 @@ export function parseImportText(text: string): ImportedGame[] {
     .filter((g) => g.title);
 }
 
+/**
+ * Split CSV text into records, keeping newlines that sit inside quotes.
+ *
+ * `parseImportText` above splits on newlines first, which is right for a pasted
+ * list of titles but wrong for exported data: a note reading "dropped at the
+ * swamp,\nmaybe later" is one field over two lines, and cutting it there loses
+ * the note and shifts every column after it.
+ */
+export function splitCsvRecords(text: string): string[] {
+  const records: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      // A doubled quote is an escaped quote, and stays inside the field.
+      if (inQuotes && text[i + 1] === '"') {
+        cur += '""';
+        i++;
+        continue;
+      }
+      inQuotes = !inQuotes;
+      cur += ch;
+    } else if (!inQuotes && (ch === "\n" || ch === "\r")) {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      records.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  records.push(cur);
+  return records.filter((r) => r.trim());
+}
+
+/** Render one CSV row, quoting whatever would otherwise break the format. */
+export function toCsvLine(cells: (string | number | null)[]): string {
+  return cells
+    .map((cell) => {
+      if (cell == null) return "";
+      const s = String(cell);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    })
+    .join(",");
+}
+
 /** Minimal quote-aware CSV field splitter for a single line. */
 export function splitCsvLine(line: string): string[] {
   const cells: string[] = [];
