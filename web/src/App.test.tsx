@@ -13,6 +13,7 @@ vi.mock("./api", async (importOriginal) => {
       games: vi.fn(),
       facets: vi.fn(),
       recommend: vi.fn(),
+      queue: vi.fn(),
       stats: vi.fn(),
       settings: vi.fn(),
       syncStatus: vi.fn(),
@@ -68,6 +69,44 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "Library" }));
     expect(screen.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("routes to every tab it advertises", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.queue).mockResolvedValue({ games: [] });
+    vi.mocked(api.stats).mockResolvedValue({
+      statusCounts: { unplayed: 0, playing: 0, finished: 0, abandoned: 0 },
+      finishedByYear: [],
+      untrackedFinishes: 0,
+      finishedThisYear: 0,
+      finishedLastYear: 0,
+      backlog: {
+        games: 0,
+        knownHours: 0,
+        unknownLength: 0,
+        estimatedHours: null,
+        medianLength: null,
+      },
+      genres: [],
+      personal: { rated: 0, average: null, top: [] },
+      taste: { observations: 0, baseline: 50, liked: [], disliked: [] },
+      totalPlaytimeHours: 0,
+      abandonmentRate: null,
+      recentFinishes: [],
+    });
+    render(<App />);
+
+    // A tab in the nav that renders nothing is the failure mode here — each of
+    // these pages arrived in a separate change.
+    const pages: [string, () => Promise<HTMLElement>][] = [
+      ["Shortlist", () => screen.findByText(/shortlist is empty/)],
+      ["Library", () => screen.findByLabelText("Search titles")],
+      ["Stats", () => screen.findByText("Library by status")],
+    ];
+    for (const [label, marker] of pages) {
+      await user.click(screen.getByRole("button", { name: label }));
+      expect(await marker(), `${label} rendered nothing`).toBeInTheDocument();
+    }
   });
 
   it("ignores an unknown view rather than rendering nothing", () => {

@@ -53,8 +53,25 @@ describe("migrate", () => {
       .get() as GameRow;
     expect(row.metacritic).toBe(93);
     expect(row.status).toBe("finished");
+    // Every column added after the original schema. A missed ALTER here doesn't
+    // fail until an upgraded database hits "no such column" at runtime, so each
+    // one is named rather than spot-checked.
     expect(row.status_changed_at).toBeNull();
     expect(row.finished_at).toBeNull();
+    expect(row.queue_position).toBeNull();
+    expect(row.personal_rating).toBeNull();
+    expect(row.notes).toBeNull();
+
+    // ...and they're writable, not just present.
+    getDb()
+      .prepare(
+        "UPDATE games SET queue_position = 1, personal_rating = 8, notes = 'good' WHERE normalized_title = 'hades'",
+      )
+      .run();
+    const updated = getDb()
+      .prepare("SELECT * FROM games WHERE normalized_title = 'hades'")
+      .get() as GameRow;
+    expect(updated).toMatchObject({ queue_position: 1, personal_rating: 8, notes: "good" });
 
     // The rebuilt table accepts the new store values...
     expect(() =>

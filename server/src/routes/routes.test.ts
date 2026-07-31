@@ -277,6 +277,89 @@ describe("GET /api/recommend?mode=tonight", () => {
   });
 });
 
+describe("user-authored data survives", () => {
+  /**
+   * Status, rating, notes and shortlist position are the only things here that
+   * can't be recovered by re-syncing. The upserts avoid them by listing columns
+   * explicitly rather than replacing the row — which is easy to lose the day
+   * someone reaches for INSERT ... ON CONFLICT DO UPDATE SET excluded.*.
+   */
+  async function authorEverything(id: number) {
+    await request(app).patch(`/api/games/${id}`).send({ status: "playing" });
+    await request(app)
+      .patch(`/api/games/${id}`)
+      .send({ personal_rating: 9, notes: "stuck on the swamp" });
+    await request(app).post(`/api/queue/${id}`);
+  }
+
+  const authored = (body: { games: { title: string }[] }, title: string) =>
+    body.games.find((g) => g.title === title);
+
+  it("a Steam sync doesn't overwrite what you wrote", async () => {
+    // The mocked library contains Portal 2, so this row gets *updated*, not added.
+    seed([{ title: "Portal 2" }]);
+    await authorEverything(1);
+
+    const res = await request(app).post("/api/sync/steam");
+    expect(res.body.updated).toBeGreaterThan(0);
+
+    const games = await request(app).get("/api/games");
+    expect(authored(games.body, "Portal 2")).toMatchObject({
+      status: "playing",
+      personal_rating: 9,
+      notes: "stuck on the swamp",
+      queue_position: 1,
+    });
+  });
+
+  it("an import doesn't overwrite what you wrote", async () => {
+    seed([{ title: "Portal 2" }]);
+    await authorEverything(1);
+
+    await request(app)
+      .post("/api/sync/import")
+      .send({ store: "gog", text: "title,playtime_hours\nPortal 2,12" });
+
+    const games = await request(app).get("/api/games");
+    expect(authored(games.body, "Portal 2")).toMatchObject({
+      status: "playing",
+      personal_rating: 9,
+      notes: "stuck on the swamp",
+      queue_position: 1,
+    });
+  });
+
+  it("enrichment doesn't overwrite what you wrote", async () => {
+    seed([{ title: "Portal 2" }]);
+    await authorEverything(1);
+
+    await request(app).post("/api/sync/enrich/refresh");
+
+    const games = await request(app).get("/api/games");
+    expect(authored(games.body, "Portal 2")).toMatchObject({
+      status: "playing",
+      personal_rating: 9,
+      notes: "stuck on the swamp",
+      queue_position: 1,
+    });
+  });
+
+  it("a status you set by hand outlives repeated syncs", async () => {
+    // Dota 2 in the mock has 5000 minutes, so the playtime inference wants it
+    // to be 'playing'. Saying otherwise has to stick.
+    await request(app).post("/api/sync/steam");
+    const first = await request(app).get("/api/games");
+    const dota = authored(first.body, "Dota 2") as { id: number };
+    await request(app).patch(`/api/games/${dota.id}`).send({ status: "abandoned" });
+
+    await request(app).post("/api/sync/steam");
+    await request(app).post("/api/sync/steam");
+
+    const after = await request(app).get("/api/games");
+    expect(authored(after.body, "Dota 2")).toMatchObject({ status: "abandoned" });
+  });
+});
+
 describe("learned taste", () => {
   /** A history of finishing RPGs and dropping shooters. */
   function seedHistory() {
@@ -345,6 +428,26 @@ describe("learned taste", () => {
     expect(warm.body.taste.observations).toBe(8);
     expect(warm.body.taste.liked.map((t: { key: string }) => t.key)).toContain("rpg");
     expect(warm.body.taste.disliked.map((t: { key: string }) => t.key)).toContain("shooter");
+  });
+
+  it("stays out of the modes that don't use the composite score", async () => {
+    seedHistory();
+    seed([
+      { title: "Quick Shooter", metacritic: 92, hltb_main: 3, genres: ["Shooter"] },
+      { title: "Quick RPG", metacritic: 80, hltb_main: 3, genres: ["RPG"] },
+    ]);
+
+    // quick-wins, backlog-shame, hidden-gems and classics-missed have their own
+    // fixed ranking. The weight is parsed for every mode, so nothing but this
+    // stops it leaking into them.
+    for (const mode of ["quick-wins", "backlog-shame"]) {
+      const on = await request(app).get(`/api/recommend?mode=${mode}`);
+      const off = await request(app).get(`/api/recommend?mode=${mode}&w_taste=0`);
+      const titles = (r: typeof on) =>
+        r.body.results.map((x: { game: { title: string } }) => x.game.title);
+      expect(titles(on)).toEqual(titles(off));
+      expect(titles(on)[0]).toBe("Quick Shooter");
+    }
   });
 
   it("counts a hidden game as evidence even though it's never recommended", async () => {
