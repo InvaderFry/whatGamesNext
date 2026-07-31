@@ -9,7 +9,7 @@ import {
   type ImportStore,
 } from "../lib/library.js";
 import { parseImportText } from "../lib/import.js";
-import { startEnrichment, getEnrichProgress, retryFailed } from "../lib/enrich.js";
+import { startEnrichment, getEnrichProgress, retryFailed, refreshAll } from "../lib/enrich.js";
 import { env } from "../env.js";
 import { getSetting } from "../lib/settings.js";
 
@@ -75,6 +75,12 @@ syncRouter.post("/sync/enrich/retry-failed", (_req, res) => {
   const requeued = retryFailed();
   const result = requeued > 0 ? startEnrichment() : { started: false };
   res.json({ requeued, ...result });
+});
+
+/** Requeue the whole library so stale ratings and lengths are re-fetched. */
+syncRouter.post("/sync/enrich/refresh", (_req, res) => {
+  const requeued = refreshAll();
+  res.json({ requeued, ...startEnrichment() });
 });
 
 syncRouter.get("/sync/status", (_req, res) => {

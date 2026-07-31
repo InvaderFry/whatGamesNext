@@ -13,6 +13,10 @@ export const env = {
   steamId: process.env.STEAM_ID ?? "",
   rawgApiKey: process.env.RAWG_API_KEY ?? "",
   port: Number(process.env.PORT) || 3001,
+  // Loopback by default: the API has no auth and can read and write your API
+  // keys, so it must not be reachable from the rest of the network unless the
+  // user opts in (HOST=0.0.0.0).
+  host: process.env.HOST || "127.0.0.1",
   demo: process.env.DEMO === "1",
   dataDir: process.env.DATA_DIR || path.join(repoRoot, "data"),
 };

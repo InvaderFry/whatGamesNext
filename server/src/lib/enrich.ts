@@ -86,7 +86,11 @@ async function runQueue(games: GameRow[]) {
 async function enrichOne(game: GameRow) {
   const db = getDb();
 
-  const rawg = getSetting("rawg_api_key") ? await lookupRawg(game.title).catch(() => null) : null;
+  // Without a key there are no ratings to fetch. The other two sources are
+  // keyless and still worth running, but the game stays 'pending' so adding a
+  // key later backfills it — 'done' would strand it, since only failures requeue.
+  const hasRawgKey = !!getSetting("rawg_api_key");
+  const rawg = hasRawgKey ? await lookupRawg(game.title).catch(() => null) : null;
 
   // HLTB is unofficial and flaky — missing lengths are acceptable, but flag
   // a run of consecutive errors so the UI can say lengths are being skipped.
@@ -110,18 +114,26 @@ async function enrichOne(game: GameRow) {
   const tags = rawg?.tags ?? (JSON.parse(game.tags) as string[]);
   const difficulty = deriveDifficulty(genres, tags);
 
+  // Every source field is COALESCEd over its current value: a source that is
+  // down or has no entry for this game must not wipe data an earlier run got.
   db.prepare(
     `UPDATE games SET
-      rawg_id = @rawgId, metacritic = @metacritic, rawg_rating = @rating,
+      rawg_id = COALESCE(@rawgId, rawg_id),
+      metacritic = COALESCE(@metacritic, metacritic),
+      rawg_rating = COALESCE(@rating, rawg_rating),
       genres = @genres, tags = @tags,
       release_date = COALESCE(@releaseDate, release_date),
       cover_url = COALESCE(cover_url, @coverUrl),
-      hltb_main = @main, hltb_extra = @extra, hltb_completionist = @completionist,
-      steam_review_pct = @reviewPct, steam_review_count = @reviewCount,
+      hltb_main = COALESCE(@main, hltb_main),
+      hltb_extra = COALESCE(@extra, hltb_extra),
+      hltb_completionist = COALESCE(@completionist, hltb_completionist),
+      steam_review_pct = COALESCE(@reviewPct, steam_review_pct),
+      steam_review_count = COALESCE(@reviewCount, steam_review_count),
       difficulty = @difficulty,
-      enrich_status = 'done', enrich_error = NULL
+      enrich_status = @status, enrich_error = NULL
     WHERE id = @id`,
   ).run({
+    status: hasRawgKey ? "done" : "pending",
     id: game.id,
     rawgId: rawg?.rawgId ?? null,
     metacritic: rawg?.metacritic ?? null,
@@ -144,6 +156,20 @@ export function retryFailed(): number {
   const info = getDb()
     .prepare(
       "UPDATE games SET enrich_status = 'pending', enrich_error = NULL WHERE enrich_status = 'failed'",
+    )
+    .run();
+  return info.changes;
+}
+
+/**
+ * Requeue every already-processed game. Ratings, review counts and lengths are
+ * otherwise frozen at whatever the first run happened to fetch, so this is the
+ * way to pick up new data — or to fill in ratings after adding a RAWG key.
+ */
+export function refreshAll(): number {
+  const info = getDb()
+    .prepare(
+      "UPDATE games SET enrich_status = 'pending', enrich_error = NULL WHERE enrich_status <> 'pending'",
     )
     .run();
   return info.changes;

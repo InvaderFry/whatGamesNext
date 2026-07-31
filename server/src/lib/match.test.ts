@@ -21,6 +21,28 @@ describe("normalizeTitle", () => {
     expect(normalizeTitle("Skyrim Special Edition")).toBe("skyrim");
   });
 
+  it("keeps edition keywords that are part of the real title", () => {
+    // These words only mean "re-release" when "edition"/"cut"/"version" follows.
+    expect(normalizeTitle("Ultimate Chicken Horse")).toBe("ultimate chicken horse");
+    expect(normalizeTitle("Gold Rush: The Game")).toBe("gold rush the game");
+    expect(normalizeTitle("Special Ops")).toBe("special ops");
+    expect(normalizeTitle("Deluxe Ski Jump 4")).toBe("deluxe ski jump 4");
+    expect(normalizeTitle("Legendary")).toBe("legendary");
+  });
+
+  it("keeps re-releases distinct from the base game", () => {
+    // normalized_title is the library's unique key, so collapsing these would
+    // merge two separate games into one row.
+    expect(normalizeTitle("Persona 5 Royal")).not.toBe(normalizeTitle("Persona 5"));
+    expect(normalizeTitle("Dark Souls Remastered")).toBe("dark souls");
+  });
+
+  it("falls back to the raw title when nothing survives normalization", () => {
+    expect(normalizeTitle("英雄伝説")).toBe("英雄伝説");
+    expect(normalizeTitle("!!!")).toBe("!!!");
+    expect(normalizeTitle("   ")).toBe("");
+  });
+
   it("normalizes ampersands and punctuation", () => {
     expect(normalizeTitle("Ori & the Blind Forest")).toBe("ori and the blind forest");
     expect(normalizeTitle("NieR:Automata™")).toBe("nier automata");

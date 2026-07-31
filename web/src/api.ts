@@ -142,6 +142,8 @@ export const api = {
   startEnrich: () => request<{ started: boolean }>("/api/sync/enrich", { method: "POST" }),
   retryFailedEnrich: () =>
     request<{ requeued: number }>("/api/sync/enrich/retry-failed", { method: "POST" }),
+  refreshEnrich: () =>
+    request<{ requeued: number }>("/api/sync/enrich/refresh", { method: "POST" }),
 };
 
 export function formatPlaytime(minutes: number): string {

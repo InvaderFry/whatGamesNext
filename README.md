@@ -81,3 +81,9 @@ npm run build      # production build; then `npm start` serves UI + API on :3001
 CI (GitHub Actions) runs typecheck, lint, format check, and tests on every push and PR.
 
 Data lives in `data/games.db` (SQLite). Delete it to start over.
+
+## A note on access
+
+The server binds to `127.0.0.1` — it's reachable only from your own machine. There is no
+authentication, and the API can both read and write your stored API keys, so only set
+`HOST=0.0.0.0` (to reach the app from a phone or another PC) on a network you trust.
