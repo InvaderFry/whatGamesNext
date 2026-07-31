@@ -71,6 +71,7 @@ beforeEach(() => {
     added: 87,
     updated: 13,
     promoted: 0,
+    merged: [],
   });
   startEnrich.mockResolvedValue({ started: true });
 });
@@ -116,6 +117,7 @@ describe("Settings", () => {
       added: 0,
       updated: 100,
       promoted: 0,
+      merged: [],
     });
     render(<Settings />);
     await screen.findByText(/10 games total/);
@@ -196,6 +198,7 @@ describe("Settings", () => {
       added: 87,
       updated: 13,
       promoted: 23,
+      merged: [],
     });
     render(<Settings />);
     await screen.findByText(/10 games total/);
@@ -204,5 +207,28 @@ describe("Settings", () => {
     expect(
       await screen.findByText(/23 games marked as playing based on playtime/),
     ).toBeInTheDocument();
+  });
+
+  it("names the games a sync folded into entries you already had", async () => {
+    const user = userEvent.setup();
+    syncSteam.mockResolvedValue({
+      source: "steam",
+      fetched: 100,
+      added: 0,
+      updated: 100,
+      promoted: 0,
+      merged: [{ title: "Control", into: "Control", store: "epic" }],
+    });
+    render(<Settings />);
+    await screen.findByText(/10 games total/);
+
+    await user.click(screen.getByRole("button", { name: "Sync Steam library" }));
+    // The count alone would say a merge happened without saying to what — the
+    // whole point is being able to spot a wrong one.
+    expect(await screen.findByText(/Control → Control/)).toBeInTheDocument();
+    expect(screen.getByText(/Folded 1 title into entries you already had/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(/Control → Control/)).not.toBeInTheDocument();
   });
 });

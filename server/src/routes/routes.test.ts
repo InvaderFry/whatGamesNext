@@ -312,6 +312,14 @@ describe("user-authored data survives", () => {
     });
   });
 
+  it("reports a cross-store merge so a wrong one is visible", async () => {
+    seed([{ title: "Portal 2", store: "epic" }]);
+
+    const res = await request(app).post("/api/sync/steam");
+
+    expect(res.body.merged).toEqual([{ title: "Portal 2", into: "Portal 2", store: "epic" }]);
+  });
+
   it("an import doesn't overwrite what you wrote", async () => {
     seed([{ title: "Portal 2" }]);
     await authorEverything(1);

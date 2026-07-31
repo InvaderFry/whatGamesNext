@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type SettingsMap, type SyncResult, type SyncStatus } from "../api";
+import {
+  api,
+  STORE_LABEL,
+  type MergeNote,
+  type SettingsMap,
+  type SyncResult,
+  type SyncStatus,
+} from "../api";
 
 function formatEta(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -35,6 +42,7 @@ export default function Settings() {
   const [importText, setImportText] = useState("");
   const [importStore, setImportStore] = useState("gog");
   const [justAdded, setJustAdded] = useState<number | null>(null);
+  const [merged, setMerged] = useState<MergeNote[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const offerRef = useRef<HTMLDivElement | null>(null);
 
@@ -100,6 +108,7 @@ export default function Settings() {
       return parts.join(" ");
     });
     if (r && r.added > 0) setJustAdded(r.added);
+    setMerged(r?.merged ?? []);
   }
 
   async function saveSettings() {
@@ -139,6 +148,29 @@ export default function Settings() {
     <>
       {message && <div className="notice">{message}</div>}
       {error && <div className="notice error">{error}</div>}
+
+      {/* Matching on title is how a game owned on two stores becomes one row,
+          and it is also the only way two different games can be combined by
+          mistake. Same event either way, so it is reported rather than judged. */}
+      {merged.length > 0 && (
+        <div className="notice">
+          <p style={{ margin: "0 0 8px" }}>
+            Folded {merged.length} title{merged.length === 1 ? "" : "s"} into entries you already
+            had. That is what you want for a game you own twice — if two of these are actually
+            different games, mark one hidden or rename it in the source list.
+          </p>
+          <ul className="merge-list">
+            {merged.map((m) => (
+              <li key={`${m.title}-${m.into}`}>
+                {m.title} → {m.into} <span className="hint">(was {STORE_LABEL[m.store]})</span>
+              </li>
+            ))}
+          </ul>
+          <button className="btn secondary" onClick={() => setMerged([])}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {offerEnrich && (
         <div className="notice" ref={offerRef}>

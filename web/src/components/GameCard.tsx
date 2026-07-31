@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { api, difficultyLabel, formatPlaytime, type Game, type ScoreBreakdown } from "../api";
+import {
+  api,
+  difficultyLabel,
+  formatPlaytime,
+  STORE_LABEL,
+  type Game,
+  type ScoreBreakdown,
+} from "../api";
 
 const BREAKDOWN_LABELS: [keyof ScoreBreakdown, string][] = [
   ["rating", "rating"],
@@ -22,15 +29,6 @@ function ratingClass(r: number | null): string {
   if (r >= 60) return "rating-mid";
   return "rating-bad";
 }
-
-const STORE_LABEL = {
-  steam: "Steam",
-  epic: "Epic",
-  both: "Steam + Epic",
-  gog: "GOG",
-  itch: "itch.io",
-  other: "Other",
-} as const;
 
 export default function GameCard({
   game: initial,

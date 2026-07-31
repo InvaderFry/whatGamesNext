@@ -1,13 +1,78 @@
-import { getDb, type GameRow } from "../db.js";
+import { getDb, type GameRow, type Store } from "../db.js";
 import { normalizeTitle } from "./match.js";
 import { steamCoverUrl, type SteamOwnedGame } from "../sources/steam.js";
 import type { EpicGame } from "../sources/epic.js";
 import type { ImportedGame } from "./import.js";
 
 /**
- * Upsert helpers. Games are keyed by normalized title so the same game owned
- * on both stores collapses into a single row with store='both'.
+ * Upsert helpers. A game owned on more than one store collapses into a single
+ * row with store='both', which is why titles are matched at all — no id is
+ * shared across stores.
  */
+
+export type MatchedBy = "steam_appid" | "epic_app_name" | "title";
+
+export interface MatchedGame {
+  id: number;
+  title: string;
+  store: Store;
+  playtime_minutes: number;
+  matchedBy: MatchedBy;
+}
+
+export interface MatchKeys {
+  normalizedTitle: string;
+  steamAppid?: number | null;
+  epicAppName?: string | null;
+}
+
+/** A merge that happened on a title rather than an id, so it can be reported. */
+export interface MergeNote {
+  /** The incoming title, as the store spells it. */
+  title: string;
+  /** The title of the row it was folded into. */
+  into: string;
+  /** What that row was before the merge. */
+  store: Store;
+}
+
+/**
+ * Find the row an incoming game belongs to.
+ *
+ * A store id is authoritative and comes first: two Steam games that normalize
+ * to the same title — DOOM (1993) and DOOM (2016) — are different appids and
+ * must stay different rows. Falling back to the title is what merges a game
+ * owned on two stores, so it is kept, but only against rows carrying no id of
+ * the kind we're holding: an Epic row has no appid and is a genuine candidate,
+ * another Steam row has one and is a different game.
+ */
+export function findExistingGame(keys: MatchKeys): MatchedGame | null {
+  const db = getDb();
+  const select = "SELECT id, title, store, playtime_minutes FROM games";
+  type Row = Omit<MatchedGame, "matchedBy">;
+
+  if (keys.steamAppid != null) {
+    const row = db.prepare(`${select} WHERE steam_appid = ?`).get(keys.steamAppid) as
+      Row | undefined;
+    if (row) return { ...row, matchedBy: "steam_appid" };
+  }
+  if (keys.epicAppName) {
+    const row = db.prepare(`${select} WHERE epic_app_name = ?`).get(keys.epicAppName) as
+      Row | undefined;
+    if (row) return { ...row, matchedBy: "epic_app_name" };
+  }
+
+  const guards = [
+    keys.steamAppid != null ? "AND steam_appid IS NULL" : "",
+    keys.epicAppName ? "AND epic_app_name IS NULL" : "",
+  ].join(" ");
+  // Oldest wins where several rows share a title: stable across syncs, and the
+  // one most likely to be carrying the user's ratings and notes already.
+  const row = db
+    .prepare(`${select} WHERE normalized_title = ? ${guards} ORDER BY id LIMIT 1`)
+    .get(keys.normalizedTitle) as Row | undefined;
+  return row ? { ...row, matchedBy: "title" } : null;
+}
 
 /**
  * Two hours — Steam's own refund window, and a fair line between "launched it
@@ -40,12 +105,13 @@ export function upsertSteamGames(games: SteamOwnedGame[]): {
   added: number;
   updated: number;
   promoted: number;
+  merged: MergeNote[];
 } {
   const db = getDb();
   const now = new Date().toISOString();
   let added = 0;
   let updated = 0;
-  const find = db.prepare("SELECT id, store FROM games WHERE normalized_title = ?");
+  const merged: MergeNote[] = [];
   const insert = db.prepare(`
     INSERT INTO games (title, normalized_title, store, steam_appid, playtime_minutes, cover_url, last_synced)
     VALUES (@title, @norm, 'steam', @appid, @playtime, @cover, @now)
@@ -60,7 +126,7 @@ export function upsertSteamGames(games: SteamOwnedGame[]): {
     for (const g of games) {
       const norm = normalizeTitle(g.name);
       if (!norm) continue;
-      const existing = find.get(norm) as { id: number; store: string } | undefined;
+      const existing = findExistingGame({ normalizedTitle: norm, steamAppid: g.appid });
       const params = {
         appid: g.appid,
         playtime: g.playtime_forever,
@@ -73,6 +139,9 @@ export function upsertSteamGames(games: SteamOwnedGame[]): {
           id: existing.id,
           store: existing.store === "epic" ? "both" : existing.store,
         });
+        if (existing.matchedBy === "title" && existing.store !== "steam") {
+          merged.push({ title: g.name, into: existing.title, store: existing.store });
+        }
         updated++;
       } else {
         insert.run({ ...params, title: g.name, norm });
@@ -81,15 +150,19 @@ export function upsertSteamGames(games: SteamOwnedGame[]): {
     }
   });
   tx();
-  return { added, updated, promoted: promoteStartedGames() };
+  return { added, updated, promoted: promoteStartedGames(), merged };
 }
 
-export function upsertEpicGames(games: EpicGame[]): { added: number; updated: number } {
+export function upsertEpicGames(games: EpicGame[]): {
+  added: number;
+  updated: number;
+  merged: MergeNote[];
+} {
   const db = getDb();
   const now = new Date().toISOString();
   let added = 0;
   let updated = 0;
-  const find = db.prepare("SELECT id, store FROM games WHERE normalized_title = ?");
+  const merged: MergeNote[] = [];
   const insert = db.prepare(`
     INSERT INTO games (title, normalized_title, store, epic_app_name, last_synced)
     VALUES (@title, @norm, 'epic', @appName, @now)
@@ -103,7 +176,7 @@ export function upsertEpicGames(games: EpicGame[]): { added: number; updated: nu
     for (const g of games) {
       const norm = normalizeTitle(g.title);
       if (!norm) continue;
-      const existing = find.get(norm) as { id: number; store: string } | undefined;
+      const existing = findExistingGame({ normalizedTitle: norm, epicAppName: g.appName || null });
       if (existing) {
         update.run({
           appName: g.appName || null,
@@ -111,6 +184,9 @@ export function upsertEpicGames(games: EpicGame[]): { added: number; updated: nu
           id: existing.id,
           store: existing.store === "steam" ? "both" : existing.store,
         });
+        if (existing.matchedBy === "title" && existing.store !== "epic") {
+          merged.push({ title: g.title, into: existing.title, store: existing.store });
+        }
         updated++;
       } else {
         insert.run({ title: g.title, norm, appName: g.appName || null, now });
@@ -119,7 +195,7 @@ export function upsertEpicGames(games: EpicGame[]): { added: number; updated: nu
     }
   });
   tx();
-  return { added, updated };
+  return { added, updated, merged };
 }
 
 export type ImportStore = "gog" | "itch" | "other";
@@ -132,12 +208,12 @@ export type ImportStore = "gog" | "itch" | "other";
 export function upsertImportedGames(
   games: ImportedGame[],
   store: ImportStore,
-): { added: number; updated: number; promoted: number } {
+): { added: number; updated: number; promoted: number; merged: MergeNote[] } {
   const db = getDb();
   const now = new Date().toISOString();
   let added = 0;
   let updated = 0;
-  const find = db.prepare("SELECT id, playtime_minutes FROM games WHERE normalized_title = ?");
+  const merged: MergeNote[] = [];
   const insert = db.prepare(`
     INSERT INTO games (title, normalized_title, store, playtime_minutes, last_synced)
     VALUES (@title, @norm, @store, @playtime, @now)
@@ -150,13 +226,18 @@ export function upsertImportedGames(
     for (const g of games) {
       const norm = normalizeTitle(g.title);
       if (!norm) continue;
-      const existing = find.get(norm) as { id: number; playtime_minutes: number } | undefined;
+      // A pasted list carries no id at all, so the title is all there is to go
+      // on — the one case where two same-named games can still collide.
+      const existing = findExistingGame({ normalizedTitle: norm });
       if (existing) {
         update.run({
           id: existing.id,
           playtime: existing.playtime_minutes || (g.playtimeMinutes ?? 0),
           now,
         });
+        if (existing.store !== store) {
+          merged.push({ title: g.title, into: existing.title, store: existing.store });
+        }
         updated++;
       } else {
         insert.run({ title: g.title, norm, store, playtime: g.playtimeMinutes ?? 0, now });
@@ -165,7 +246,7 @@ export function upsertImportedGames(
     }
   });
   tx();
-  return { added, updated, promoted: promoteStartedGames() };
+  return { added, updated, promoted: promoteStartedGames(), merged };
 }
 
 export interface GameFilters {

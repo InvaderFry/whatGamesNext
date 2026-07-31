@@ -596,6 +596,17 @@ button.btn.secondary {
   background: rgba(248, 113, 113, 0.12);
   border-color: var(--bad);
 }
+.merge-list {
+  margin: 0 0 10px;
+  padding-left: 20px;
+  /* A first sync can merge a lot at once; the notice shouldn't push the sync
+     buttons off the screen. */
+  max-height: 180px;
+  overflow-y: auto;
+}
+.merge-list li {
+  margin-bottom: 2px;
+}
 
 /* Stats page */
 .stat-tiles {

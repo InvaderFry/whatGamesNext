@@ -29,6 +29,15 @@ export interface Game {
   notes: string | null;
 }
 
+export const STORE_LABEL: Record<Game["store"], string> = {
+  steam: "Steam",
+  epic: "Epic",
+  both: "Steam + Epic",
+  gog: "GOG",
+  itch: "itch.io",
+  other: "Other",
+};
+
 export interface ScoreBreakdown {
   rating: number;
   unplayed: number;
@@ -63,6 +72,13 @@ export interface Recommendation {
   game: Game;
 }
 
+/** A game folded into an entry you already had, matched on its title. */
+export interface MergeNote {
+  title: string;
+  into: string;
+  store: Game["store"];
+}
+
 export interface SyncResult {
   source: string;
   fetched: number;
@@ -70,6 +86,8 @@ export interface SyncResult {
   updated: number;
   /** Games moved from 'unplayed' to 'playing' because they have real hours on them. */
   promoted: number;
+  /** Cross-store merges, reported so a wrong one is visible instead of silent. */
+  merged: MergeNote[];
 }
 
 export interface SyncStatus {
