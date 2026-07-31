@@ -136,6 +136,20 @@ button.btn.secondary {
   gap: 14px;
 }
 
+.pager {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  margin: 20px 0 8px;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.pager button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -279,6 +293,25 @@ button.btn.secondary {
 }
 .card .controls button:hover {
   color: var(--text);
+}
+
+.card .actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+/* .btn is scoped to button elements, so these anchors need their own rule. */
+.card .actions a {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+.card .actions a:hover {
+  color: var(--text);
+  border-color: var(--accent);
 }
 
 .empty {

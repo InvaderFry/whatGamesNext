@@ -57,6 +57,30 @@ describe("GameCard", () => {
     expect(screen.getByRole("button", { name: "Hide Hades" })).toBeInTheDocument();
   });
 
+  it("links to Steam when the game has an appid", () => {
+    render(<GameCard game={makeGame()} />);
+
+    expect(screen.getByLabelText("Launch Hades in Steam")).toHaveAttribute(
+      "href",
+      "steam://rungameid/1145360",
+    );
+    const store = screen.getByLabelText("Open Hades on the Steam store");
+    expect(store).toHaveAttribute("href", "https://store.steampowered.com/app/1145360/");
+    expect(store).toHaveAttribute("target", "_blank");
+  });
+
+  it("omits the Steam links when there is no appid to launch", () => {
+    render(<GameCard game={makeGame({ title: "Control", store: "epic", steam_appid: null })} />);
+
+    expect(screen.queryByLabelText("Launch Control in Steam")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Open Control on the Steam store")).not.toBeInTheDocument();
+  });
+
+  it("links a game owned on both stores, since the appid is what matters", () => {
+    render(<GameCard game={makeGame({ store: "both" })} />);
+    expect(screen.getByLabelText("Launch Hades in Steam")).toBeInTheDocument();
+  });
+
   it("falls back to the title placeholder when the cover fails to load", () => {
     render(<GameCard game={makeGame()} />);
     fireEvent.error(screen.getByAltText("Hades cover art"));
