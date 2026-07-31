@@ -7,13 +7,22 @@ import { makeGame } from "../test-utils";
 
 vi.mock("../api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api")>();
-  return { ...actual, api: { ...actual.api, patchGame: vi.fn() } };
+  return {
+    ...actual,
+    api: { ...actual.api, patchGame: vi.fn(), addToQueue: vi.fn(), removeFromQueue: vi.fn() },
+  };
 });
 
 const patchGame = vi.mocked(api.patchGame);
+const addToQueue = vi.mocked(api.addToQueue);
+const removeFromQueue = vi.mocked(api.removeFromQueue);
 
 beforeEach(() => {
   patchGame.mockReset();
+  addToQueue.mockReset();
+  removeFromQueue.mockReset();
+  addToQueue.mockResolvedValue({ games: [] });
+  removeFromQueue.mockResolvedValue({ games: [] });
 });
 
 describe("GameCard", () => {
@@ -79,6 +88,90 @@ describe("GameCard", () => {
   it("links a game owned on both stores, since the appid is what matters", () => {
     render(<GameCard game={makeGame({ store: "both" })} />);
     expect(screen.getByLabelText("Launch Hades in Steam")).toBeInTheDocument();
+  });
+
+  it("shortlists a game and flips the button without a reload", async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn();
+    render(<GameCard game={makeGame()} onChanged={onChanged} />);
+
+    const button = screen.getByRole("button", { name: "Add Hades to the shortlist" });
+    expect(button).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(button);
+    expect(addToQueue).toHaveBeenCalledWith(1);
+    expect(onChanged).toHaveBeenCalled();
+    expect(
+      await screen.findByRole("button", { name: "Remove Hades from the shortlist" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("takes a game back off the shortlist", async () => {
+    const user = userEvent.setup();
+    render(<GameCard game={makeGame({ queue_position: 2 })} />);
+
+    await user.click(screen.getByRole("button", { name: "Remove Hades from the shortlist" }));
+    expect(removeFromQueue).toHaveBeenCalledWith(1);
+    expect(
+      await screen.findByRole("button", { name: "Add Hades to the shortlist" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the old state and shows the error when shortlisting fails", async () => {
+    const user = userEvent.setup();
+    addToQueue.mockRejectedValue(new Error("queue full"));
+    render(<GameCard game={makeGame()} />);
+
+    await user.click(screen.getByRole("button", { name: "Add Hades to the shortlist" }));
+    expect(await screen.findByText("queue full")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Hades to the shortlist" })).toBeInTheDocument();
+  });
+
+  it("saves a rating from the take panel", async () => {
+    const user = userEvent.setup();
+    patchGame.mockResolvedValue(makeGame({ personal_rating: 9 }));
+    render(<GameCard game={makeGame()} />);
+
+    await user.click(screen.getByRole("button", { name: "Your rating and notes for Hades" }));
+    await user.selectOptions(screen.getByLabelText("Your rating for Hades"), "9");
+
+    expect(patchGame).toHaveBeenCalledWith(1, { personal_rating: 9 });
+    expect(await screen.findByText("♥ 9/10")).toBeInTheDocument();
+  });
+
+  it("shows your score instead of the critic score once you've given one", () => {
+    render(<GameCard game={makeGame({ personal_rating: 4 })} />);
+    expect(screen.getByText("♥ 4/10")).toBeInTheDocument();
+    expect(screen.queryByText("★ 93")).not.toBeInTheDocument();
+  });
+
+  it("saves a note when the field loses focus, not on every keystroke", async () => {
+    const user = userEvent.setup();
+    patchGame.mockResolvedValue(makeGame({ notes: "dropped at the swamp" }));
+    render(<GameCard game={makeGame()} />);
+
+    await user.click(screen.getByRole("button", { name: "Your rating and notes for Hades" }));
+    await user.type(screen.getByLabelText("Notes on Hades"), "dropped at the swamp");
+    expect(patchGame).not.toHaveBeenCalled();
+
+    await user.tab();
+    expect(patchGame).toHaveBeenCalledWith(1, { notes: "dropped at the swamp" });
+  });
+
+  it("doesn't save an unchanged note", async () => {
+    const user = userEvent.setup();
+    render(<GameCard game={makeGame({ notes: "already written" })} />);
+
+    await user.click(screen.getByRole("button", { name: "Your rating and notes for Hades" }));
+    await user.click(screen.getByLabelText("Notes on Hades"));
+    await user.tab();
+    expect(patchGame).not.toHaveBeenCalled();
+  });
+
+  it("shows an existing note on the card without opening the panel", () => {
+    render(<GameCard game={makeGame({ notes: "stuck on the final boss" })} />);
+    expect(screen.getByText("stuck on the final boss")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Notes on Hades")).not.toBeInTheDocument();
   });
 
   it("falls back to the title placeholder when the cover fails to load", () => {

@@ -42,7 +42,7 @@ describe("Recommend", () => {
     render(<Recommend />);
     await screen.findByText("Hades");
 
-    await user.click(screen.getByRole("button", { name: "Quick wins" }));
+    await user.click(screen.getByRole("tab", { name: "Quick wins" }));
     const params = recommend.mock.calls.at(-1)![0];
     expect(params.get("mode")).toBe("quick-wins");
   });
@@ -98,7 +98,7 @@ describe("Recommend", () => {
     await user.click(screen.getByRole("button", { name: "Tune" }));
     expect(screen.getByLabelText("Rating weight")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Quick wins" }));
+    await user.click(screen.getByRole("tab", { name: "Quick wins" }));
     expect(screen.queryByLabelText("Rating weight")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Filter by genre")).toBeInTheDocument();
   });
@@ -130,6 +130,56 @@ describe("Recommend", () => {
 
     await user.click(reset);
     await waitFor(() => expect(recommend.mock.calls.at(-1)![0].get("w_recency")).toBe("0.3"));
+  });
+
+  it("announces which mode is selected", async () => {
+    const user = userEvent.setup();
+    render(<Recommend />);
+    await screen.findByText("Hades");
+
+    expect(screen.getByRole("tab", { selected: true })).toHaveAccessibleName("Play next");
+
+    await user.click(screen.getByRole("tab", { name: "Quick wins" }));
+    expect(screen.getByRole("tab", { selected: true })).toHaveAccessibleName("Quick wins");
+  });
+
+  it("moves between modes with the arrow keys, wrapping at the ends", async () => {
+    const user = userEvent.setup();
+    render(<Recommend />);
+    await screen.findByText("Hades");
+
+    // Only the selected tab is reachable by Tab; arrows move within the list.
+    screen.getByRole("tab", { name: "Play next" }).focus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { selected: true })).toHaveAccessibleName("Tonight");
+    expect(screen.getByRole("tab", { name: "Tonight" })).toHaveFocus();
+
+    await user.keyboard("{ArrowLeft}{ArrowLeft}");
+    expect(screen.getByRole("tab", { selected: true })).toHaveAccessibleName("Surprise me");
+
+    await user.keyboard("{Home}");
+    expect(screen.getByRole("tab", { selected: true })).toHaveAccessibleName("Play next");
+    await user.keyboard("{End}");
+    expect(screen.getByRole("tab", { selected: true })).toHaveAccessibleName("Surprise me");
+  });
+
+  it("keeps only the selected mode in the tab order", async () => {
+    render(<Recommend />);
+    await screen.findByText("Hades");
+
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.filter((t) => t.getAttribute("tabindex") === "0")).toHaveLength(1);
+    expect(screen.getByRole("tab", { name: "Play next" })).toHaveAttribute("tabindex", "0");
+  });
+
+  it("shows placeholder cards rather than an empty page while loading", async () => {
+    let resolve!: (v: Awaited<ReturnType<typeof api.recommend>>) => void;
+    recommend.mockReturnValue(new Promise((r) => (resolve = r)));
+    render(<Recommend />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Loading");
+    resolve({ mode: "play-next", count: 0, total: 0, results: [] });
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
   });
 
   it("points at the filters when they are what excluded everything", async () => {

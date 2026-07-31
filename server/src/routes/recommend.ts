@@ -13,6 +13,7 @@ export const recommendRouter = Router();
 
 const MODES: RecommendMode[] = [
   "play-next",
+  "tonight",
   "quick-wins",
   "backlog-shame",
   "hidden-gems",

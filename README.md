@@ -10,6 +10,7 @@ ranks your backlog in several ways:
 | Mode                    | What it does                                                                                                            |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | **Play next**           | Weighted blend of rating, how untouched the game is, fit with your time budget, and recency — with a time-budget slider |
+| **Tonight**             | Games you're already partway through, ranked by how much is _left_ rather than how good they are                        |
 | **Quick wins**          | Short, highly rated games you haven't started                                                                           |
 | **Backlog shame**       | Acclaimed games (80+) you've barely played                                                                              |
 | **Hidden gems**         | ≥90% positive on Steam but with few reviews                                                                             |
@@ -28,8 +29,22 @@ hours would sit at "unplayed" forever. Two hours is Steam's own refund window, a
 between trying something and actually playing it. This only ever applies to games whose status you
 haven't set yourself: once you change a status by hand, that game is yours and sync leaves it alone.
 
+The **Shortlist** page is an ordered "next up" queue. Star a game from anywhere to add it, then
+reorder with the ↑/↓ buttons — so a pick you liked survives a refresh instead of being re-rolled
+away.
+
+Every game takes **your own 1–10 score and a free-text note** ("dropped at the swamp"). Where you've
+scored something, that score is what the recommendations rank it by — you've played it and a critic
+hasn't played it for you.
+
 The **Stats** page tracks your play history: backlog size and hours, games finished per year
-(finish dates are recorded when you mark a game finished), total playtime, and abandonment rate.
+(finish dates are recorded when you mark a game finished), this year against last, hours by genre,
+your own ratings, total playtime, and abandonment rate. Backlog hours include games of unknown
+length, costed at the median of the lengths that are known — so the figure isn't quietly understated
+by whatever HowLongToBeat had no entry for.
+
+The UI follows your system light/dark preference, the recommendation modes are a keyboard-navigable
+tab list (arrow keys, Home/End), and `prefers-reduced-motion` is respected.
 
 ## Data sources
 
@@ -41,7 +56,12 @@ The **Stats** page tracks your play history: backlog size and hours, games finis
 - **Ratings**: [RAWG](https://rawg.io/apidocs) — includes Metacritic scores, user ratings, genres, tags.
 - **Length**: [HowLongToBeat](https://howlongtobeat.com) (unofficial — fails soft if it changes).
 - **Difficulty**: no public source exists, so it's estimated from genres/tags (souls-like, casual,
-  roguelike, …) on a 1–5 scale, and you can override it per game.
+  roguelike, …) on a 1–5 scale, and you can override it per game. Tags nudge a genre baseline
+  rather than replacing it — they're capped, so a game carrying four "hard" tags can't be pinned at
+  5 regardless of what it actually is. Only tags that speak to _challenge_ count: "story rich" and
+  "atmospheric" describe a game without saying whether it's hard. A game with nothing to go on shows
+  **?** rather than a made-up "Moderate", so an un-enriched library doesn't look like it's been
+  assessed when it hasn't. Treat the score as a rough sort key, not a verdict.
 
 ## Setup
 

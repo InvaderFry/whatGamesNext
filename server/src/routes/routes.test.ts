@@ -211,6 +211,19 @@ describe("GET /api/recommend", () => {
     expect(res.body.total).toBe(5);
   });
 
+  it("leaves games of unknown difficulty out of a maxDifficulty filter", async () => {
+    seed([
+      { title: "Known Easy", metacritic: 90, hltb_main: 10, difficulty: 2 },
+      { title: "Unknown", metacritic: 90, hltb_main: 10, difficulty: null },
+    ]);
+    // Consistent with how a null rating is treated: asked for "this hard or
+    // easier", a game we can't place doesn't qualify.
+    const res = await request(app).get("/api/recommend?maxDifficulty=3");
+    expect(res.body.results.map((r: { game: { title: string } }) => r.game.title)).toEqual([
+      "Known Easy",
+    ]);
+  });
+
   it("applies the genre filter before scoring", async () => {
     seed([
       { title: "Actioner", metacritic: 90, hltb_main: 10, genres: ["Action"] },
@@ -231,6 +244,122 @@ describe("GET /api/recommend", () => {
 
     const byRecency = await request(app).get("/api/recommend?w_rating=0&w_recency=2");
     expect(byRecency.body.results[0].game.title).toBe("New Good");
+  });
+});
+
+describe("GET /api/recommend?mode=tonight", () => {
+  it("only offers games already under way, closest to done first", async () => {
+    seed([
+      // 15h in on a 20h game: 5h left.
+      { title: "Nearly Done", status: "playing", hltb_main: 20, playtime_minutes: 900 },
+      // 2h in on a 60h game: 58h left, way past a 6h evening.
+      { title: "Barely Started", status: "playing", hltb_main: 60, playtime_minutes: 120 },
+      { title: "Not Started", status: "unplayed", hltb_main: 5 },
+      { title: "Already Done", status: "finished", hltb_main: 5, playtime_minutes: 300 },
+    ]);
+    const res = await request(app).get("/api/recommend?mode=tonight&budget=6");
+
+    const titles = res.body.results.map((r: { game: { title: string } }) => r.game.title);
+    expect(titles).toEqual(["Nearly Done", "Barely Started"]);
+    expect(res.body.results[0].reason).toMatch(/5h left of 20h/);
+  });
+
+  it("says so when a game is past its main story", async () => {
+    seed([{ title: "Overrun", status: "playing", hltb_main: 10, playtime_minutes: 900 }]);
+    const res = await request(app).get("/api/recommend?mode=tonight");
+    expect(res.body.results[0].reason).toMatch(/past the 10h main story/);
+  });
+
+  it("copes with a game of unknown length", async () => {
+    seed([{ title: "Unknown Length", status: "playing", hltb_main: null, playtime_minutes: 300 }]);
+    const res = await request(app).get("/api/recommend?mode=tonight");
+    expect(res.body.results[0].reason).toMatch(/length unknown/);
+  });
+});
+
+describe("personal rating and notes", () => {
+  it("stores a rating and a note", async () => {
+    seed([{ title: "Hades" }]);
+    const res = await request(app)
+      .patch("/api/games/1")
+      .send({ personal_rating: 9, notes: "  best run-based game  " });
+
+    expect(res.status).toBe(200);
+    expect(res.body.personal_rating).toBe(9);
+    // Trimmed on the way in, so a stray newline isn't stored as a note.
+    expect(res.body.notes).toBe("best run-based game");
+  });
+
+  it("treats an emptied note as cleared", async () => {
+    seed([{ title: "Hades" }]);
+    await request(app).patch("/api/games/1").send({ notes: "a thought" });
+    const res = await request(app).patch("/api/games/1").send({ notes: "   " });
+    expect(res.body.notes).toBeNull();
+  });
+
+  it("rejects a rating outside 1-10", async () => {
+    seed([{ title: "Hades" }]);
+    for (const bad of [0, 11, 5.5]) {
+      const res = await request(app).patch("/api/games/1").send({ personal_rating: bad });
+      expect(res.status).toBe(400);
+    }
+    expect((await request(app).patch("/api/games/1").send({ personal_rating: null })).status).toBe(
+      200,
+    );
+  });
+
+  it("ranks by your score over the critics'", async () => {
+    seed([
+      { title: "Critics Loved It", metacritic: 95, hltb_main: 10 },
+      { title: "You Loved It", metacritic: 60, hltb_main: 10 },
+    ]);
+    const before = await request(app).get("/api/recommend?w_rating=2&w_unplayed=0&w_recency=0");
+    expect(before.body.results[0].game.title).toBe("Critics Loved It");
+
+    const you = (await request(app).get("/api/games")).body.games.find(
+      (g: { title: string }) => g.title === "You Loved It",
+    );
+    await request(app).patch(`/api/games/${you.id}`).send({ personal_rating: 10 });
+
+    const after = await request(app).get("/api/recommend?w_rating=2&w_unplayed=0&w_recency=0");
+    expect(after.body.results[0].game.title).toBe("You Loved It");
+    expect(after.body.results[0].game.effective_rating).toBe(100);
+  });
+});
+
+describe("shortlist routes", () => {
+  it("adds, reorders and removes, always returning the current list", async () => {
+    seed([{ title: "A" }, { title: "B" }]);
+
+    const added = await request(app).post("/api/queue/1");
+    expect(added.status).toBe(200);
+    await request(app).post("/api/queue/2");
+
+    const moved = await request(app).post("/api/queue/2/move").send({ direction: "up" });
+    expect(moved.body.games.map((g: { title: string }) => g.title)).toEqual(["B", "A"]);
+    expect(moved.body.games[0].queue_position).toBe(1);
+
+    const removed = await request(app).delete("/api/queue/2");
+    expect(removed.body.games.map((g: { title: string }) => g.title)).toEqual(["A"]);
+  });
+
+  it("rejects a bad direction", async () => {
+    seed([{ title: "A" }]);
+    await request(app).post("/api/queue/1");
+    const res = await request(app).post("/api/queue/1/move").send({ direction: "sideways" });
+    expect(res.status).toBe(400);
+  });
+
+  it("404s on adding a game that doesn't exist", async () => {
+    const res = await request(app).post("/api/queue/999");
+    expect(res.status).toBe(404);
+  });
+
+  it("surfaces the shortlist position on the game itself", async () => {
+    seed([{ title: "A" }]);
+    await request(app).post("/api/queue/1");
+    const games = await request(app).get("/api/games");
+    expect(games.body.games[0].queue_position).toBe(1);
   });
 });
 
@@ -406,6 +535,73 @@ describe("play history and stats", () => {
     const year = String(new Date().getFullYear());
     expect(res.body.finishedByYear).toEqual([{ year, n: 1 }]);
     expect(res.body.recentFinishes.map((g: { title: string }) => g.title)).toEqual(["Backlog B"]);
+  });
+
+  it("costs unsized backlog games at the median known length", async () => {
+    seed([
+      { title: "Short", hltb_main: 5 },
+      { title: "Medium", hltb_main: 10 },
+      { title: "Long", hltb_main: 100 },
+      { title: "Unsized A" },
+      { title: "Unsized B" },
+    ]);
+    const res = await request(app).get("/api/stats");
+
+    // Median of 5/10/100 is 10 — a mean would let the 100h outlier inflate it.
+    expect(res.body.backlog).toMatchObject({
+      knownHours: 115,
+      unknownLength: 2,
+      medianLength: 10,
+      estimatedHours: 135,
+    });
+  });
+
+  it("leaves the backlog estimate null when no length is known at all", async () => {
+    seed([{ title: "A" }, { title: "B" }]);
+    const res = await request(app).get("/api/stats");
+    expect(res.body.backlog.estimatedHours).toBeNull();
+    expect(res.body.backlog.medianLength).toBeNull();
+  });
+
+  it("reports playtime by genre, counting a multi-genre game under each", async () => {
+    seed([
+      { title: "A", genres: ["Action", "RPG"], playtime_minutes: 600 },
+      { title: "B", genres: ["RPG"], playtime_minutes: 300 },
+      { title: "Never Played", genres: ["Puzzle"] },
+      { title: "Hidden", genres: ["RPG"], playtime_minutes: 6000, hidden: 1 },
+    ]);
+    const res = await request(app).get("/api/stats");
+
+    expect(res.body.genres).toEqual([
+      { genre: "RPG", games: 2, hours: 15 },
+      { genre: "Action", games: 1, hours: 10 },
+    ]);
+  });
+
+  it("summarises your own ratings", async () => {
+    seed([{ title: "A" }, { title: "B" }, { title: "C" }]);
+    const empty = await request(app).get("/api/stats");
+    expect(empty.body.personal).toMatchObject({ rated: 0, average: null, top: [] });
+
+    await request(app).patch("/api/games/1").send({ personal_rating: 9 });
+    await request(app).patch("/api/games/2").send({ personal_rating: 6 });
+
+    const res = await request(app).get("/api/stats");
+    expect(res.body.personal.rated).toBe(2);
+    expect(res.body.personal.average).toBe(7.5);
+    expect(res.body.personal.top.map((g: { title: string }) => g.title)).toEqual(["A", "B"]);
+  });
+
+  it("compares this year's finishes with last year's", async () => {
+    seed([{ title: "A" }, { title: "B" }]);
+    await request(app).patch("/api/games/1").send({ status: "finished" });
+    getDb()
+      .prepare("UPDATE games SET status = 'finished', finished_at = ? WHERE title = 'B'")
+      .run(`${new Date().getFullYear() - 1}-06-01T00:00:00.000Z`);
+
+    const res = await request(app).get("/api/stats");
+    expect(res.body.finishedThisYear).toBe(1);
+    expect(res.body.finishedLastYear).toBe(1);
   });
 });
 

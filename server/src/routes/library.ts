@@ -83,6 +83,8 @@ libraryRouter.patch("/games/:id", (req, res) => {
     status: string;
     hidden: boolean;
     difficulty_override: number | null;
+    personal_rating: number | null;
+    notes: string | null;
   }>;
 
   const sets: string[] = [];
@@ -116,6 +118,27 @@ libraryRouter.patch("/games/:id", (req, res) => {
     }
     sets.push("difficulty_override = @diff");
     params.diff = body.difficulty_override;
+  }
+  if (body.personal_rating !== undefined) {
+    if (
+      body.personal_rating !== null &&
+      (!Number.isInteger(body.personal_rating) ||
+        body.personal_rating < 1 ||
+        body.personal_rating > 10)
+    ) {
+      return res.status(400).json({ error: "personal_rating must be 1-10 or null" });
+    }
+    sets.push("personal_rating = @rating");
+    params.rating = body.personal_rating;
+  }
+  if (body.notes !== undefined) {
+    if (body.notes !== null && typeof body.notes !== "string") {
+      return res.status(400).json({ error: "notes must be a string or null" });
+    }
+    // An emptied note is a cleared note, not an empty string to store.
+    const trimmed = body.notes?.trim();
+    sets.push("notes = @notes");
+    params.notes = trimmed ? trimmed.slice(0, 2000) : null;
   }
   if (!sets.length) return res.status(400).json({ error: "nothing to update" });
 

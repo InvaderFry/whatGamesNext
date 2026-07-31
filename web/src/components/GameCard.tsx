@@ -36,16 +36,39 @@ export default function GameCard({
   reason,
   breakdown,
   onChanged,
+  showShortlistToggle = true,
 }: {
   game: Game;
   reason?: string;
   breakdown?: ScoreBreakdown | null;
   onChanged?: () => void;
+  /** Off on the Shortlist page, where each row already has a remove button —
+   *  two controls doing the same job would carry the same label. */
+  showShortlistToggle?: boolean;
 }) {
   const [game, setGame] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [coverFailed, setCoverFailed] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(initial.notes ?? "");
+
+  async function toggleShortlist() {
+    const listed = game.queue_position != null;
+    setBusy(true);
+    try {
+      await (listed ? api.removeFromQueue(game.id) : api.addToQueue(game.id));
+      // The card owns its copy of the game, so reflect the change locally
+      // rather than making the whole page reload for one toggle.
+      setGame((g) => ({ ...g, queue_position: listed ? null : Number.MAX_SAFE_INTEGER }));
+      setError(null);
+      onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function patch(p: Parameters<typeof api.patchGame>[1]) {
     setBusy(true);
@@ -81,7 +104,14 @@ export default function GameCard({
         {error && <div className="card-error">{error}</div>}
         <div className="badges">
           <span className="badge store">{STORE_LABEL[game.store]}</span>
-          {game.effective_rating != null && (
+          {/* Your own score is shown as itself rather than folded into the
+              critic badge, even though it's what the ranking now uses. */}
+          {game.personal_rating != null && (
+            <span className={`badge ${ratingClass(game.personal_rating * 10)}`} title="Your rating">
+              ♥ {game.personal_rating}/10
+            </span>
+          )}
+          {game.effective_rating != null && game.personal_rating == null && (
             <span className={`badge ${ratingClass(game.effective_rating)}`}>
               ★ {Math.round(game.effective_rating)}
             </span>
@@ -102,6 +132,45 @@ export default function GameCard({
                 {g}
               </span>
             ))}
+          </div>
+        )}
+
+        {game.notes && !noteOpen && <div className="card-note">{game.notes}</div>}
+        {noteOpen && (
+          <div className="take">
+            <label>
+              <span>Your rating</span>
+              <select
+                disabled={busy}
+                aria-label={`Your rating for ${game.title}`}
+                value={game.personal_rating ?? ""}
+                onChange={(e) =>
+                  void patch({
+                    personal_rating: e.target.value === "" ? null : Number(e.target.value),
+                  })
+                }
+              >
+                <option value="">—</option>
+                {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((n) => (
+                  <option key={n} value={n}>
+                    {n}/10
+                  </option>
+                ))}
+              </select>
+            </label>
+            <textarea
+              rows={3}
+              disabled={busy}
+              aria-label={`Notes on ${game.title}`}
+              placeholder="dropped at the swamp…"
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              // Saved on blur so a note isn't lost by clicking away, and so
+              // every keystroke isn't a request.
+              onBlur={() => {
+                if (noteDraft.trim() !== (game.notes ?? "")) void patch({ notes: noteDraft });
+              }}
+            />
           </div>
         )}
         {/* Gated on the appid rather than the store: a "both" game is launchable,
@@ -155,6 +224,26 @@ export default function GameCard({
               </option>
             ))}
           </select>
+          {showShortlistToggle && (
+            <button
+              disabled={busy}
+              aria-pressed={game.queue_position != null}
+              aria-label={`${game.queue_position != null ? "Remove" : "Add"} ${game.title} ${
+                game.queue_position != null ? "from" : "to"
+              } the shortlist`}
+              onClick={() => void toggleShortlist()}
+            >
+              {game.queue_position != null ? "★ Listed" : "☆ Shortlist"}
+            </button>
+          )}
+          <button
+            disabled={busy}
+            aria-expanded={noteOpen}
+            aria-label={`Your rating and notes for ${game.title}`}
+            onClick={() => setNoteOpen((o) => !o)}
+          >
+            {game.personal_rating != null || game.notes ? "✎ Edit take" : "✎ Rate"}
+          </button>
           <button
             disabled={busy}
             aria-label={`${game.hidden ? "Unhide" : "Hide"} ${game.title}`}

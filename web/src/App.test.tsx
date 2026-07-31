@@ -57,6 +57,19 @@ describe("App", () => {
     expect(window.location.search).toBe("");
   });
 
+  it("marks the active page for assistive tech, not just visually", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    expect(screen.getByRole("button", { name: "What next?" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("button", { name: "Library" })).not.toHaveAttribute("aria-current");
+
+    await user.click(screen.getByRole("button", { name: "Library" }));
+    expect(screen.getByRole("button", { name: "Library" })).toHaveAttribute("aria-current", "page");
+  });
+
   it("ignores an unknown view rather than rendering nothing", () => {
     window.history.replaceState(null, "", "/?view=bogus");
     render(<App />);

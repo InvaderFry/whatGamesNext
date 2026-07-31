@@ -2,14 +2,16 @@ import { useEffect, useState } from "react";
 import Library from "./pages/Library";
 import Toasts from "./components/Toasts";
 import Recommend from "./pages/Recommend";
+import Shortlist from "./pages/Shortlist";
 import Stats from "./pages/Stats";
 import Settings from "./pages/Settings";
 import { readUrl, writeUrl } from "./urlState";
 
-type Page = "recommend" | "library" | "stats" | "settings";
+type Page = "recommend" | "shortlist" | "library" | "stats" | "settings";
 
 const PAGES: [Page, string][] = [
   ["recommend", "What next?"],
+  ["shortlist", "Shortlist"],
   ["library", "Library"],
   ["stats", "Stats"],
   ["settings", "Settings"],
@@ -37,9 +39,16 @@ export default function App() {
         <h1>
           whatGames<span>Next</span>
         </h1>
-        <nav className="nav">
+        <nav className="nav" aria-label="Main">
           {PAGES.map(([key, label]) => (
-            <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}>
+            <button
+              key={key}
+              // Navigation rather than tabs, so the active page is announced
+              // with aria-current instead of a tablist's aria-selected.
+              aria-current={page === key ? "page" : undefined}
+              className={page === key ? "active" : ""}
+              onClick={() => setPage(key)}
+            >
               {label}
             </button>
           ))}
@@ -47,6 +56,7 @@ export default function App() {
       </header>
       <main>
         {page === "recommend" && <Recommend />}
+        {page === "shortlist" && <Shortlist />}
         {page === "library" && <Library />}
         {page === "stats" && <Stats />}
         {page === "settings" && <Settings />}

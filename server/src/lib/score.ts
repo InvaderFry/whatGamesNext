@@ -20,8 +20,13 @@ export const DEFAULT_WEIGHTS: Weights = {
   recency: 0.3,
 };
 
-/** Best available rating on a 0–100 scale, or null when nothing is known. */
+/**
+ * Best available rating on a 0–100 scale, or null when nothing is known.
+ * Your own score wins where you've given one — you've played the thing, and a
+ * critic hasn't played it *for you*.
+ */
 export function effectiveRating(g: GameRow): number | null {
+  if (g.personal_rating != null) return g.personal_rating * 10; // stored 1–10
   if (g.metacritic != null) return g.metacritic;
   if (g.rawg_rating != null) return g.rawg_rating * 20; // RAWG is 0–5
   if (g.steam_review_pct != null) return g.steam_review_pct;
@@ -90,7 +95,13 @@ export function scoreBreakdown(
 }
 
 export type RecommendMode =
-  "play-next" | "quick-wins" | "backlog-shame" | "hidden-gems" | "classics-missed" | "surprise";
+  | "play-next"
+  | "tonight"
+  | "quick-wins"
+  | "backlog-shame"
+  | "hidden-gems"
+  | "classics-missed"
+  | "surprise";
 
 export interface RecommendOptions {
   budgetHours?: number | null;
@@ -126,6 +137,26 @@ export function recommend(
           reason: describeComposite(g, budget),
           breakdown: scoreBreakdown(g, weights, budget),
         }))
+        .sort((a, b) => b.score - a.score);
+
+    // "I have two hours" is a different question from "what should I start".
+    // These are games already under way, ranked by what's *left* rather than by
+    // how good they are — that call was made when they were started.
+    case "tonight":
+      return pool
+        .filter((g) => g.status === "playing")
+        .map((g) => {
+          const playedHours = g.playtime_minutes / 60;
+          const remaining = g.hltb_main != null ? Math.max(0, g.hltb_main - playedHours) : null;
+          const rating = effectiveRating(g);
+          return {
+            game: g,
+            // Fit of the remaining time dominates; rating only breaks ties.
+            score:
+              lengthFitScore(remaining, budget) * 0.8 + (rating != null ? rating / 100 : 0.5) * 0.2,
+            reason: describeRemaining(g, remaining, playedHours),
+          };
+        })
         .sort((a, b) => b.score - a.score);
 
     case "quick-wins":
@@ -206,6 +237,14 @@ export function recommend(
       return [ranked[0]];
     }
   }
+}
+
+function describeRemaining(g: GameRow, remaining: number | null, playedHours: number): string {
+  const played = formatMinutes(g.playtime_minutes);
+  if (remaining == null) return `${played} in — main story length unknown`;
+  if (remaining <= 0) return `${played} in, past the ${g.hltb_main}h main story`;
+  const pct = Math.round((playedHours / g.hltb_main!) * 100);
+  return `about ${Math.round(remaining)}h left of ${g.hltb_main}h — ${pct}% through`;
 }
 
 function describeComposite(g: GameRow, budget: number | null): string {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Stats as StatsData } from "../api";
+import SkeletonGrid from "../components/SkeletonGrid";
 
 const STATUS_LABELS: [keyof StatsData["statusCounts"], string][] = [
   ["unplayed", "Unplayed"],
@@ -37,22 +38,37 @@ export default function Stats() {
   }, []);
 
   if (error) return <div className="notice error">{error}</div>;
-  if (!stats) return null;
+  if (!stats) return <SkeletonGrid count={4} />;
 
   const total = Object.values(stats.statusCounts).reduce((a, b) => a + b, 0);
+  const { backlog } = stats;
+  const yearDelta = stats.finishedThisYear - stats.finishedLastYear;
 
   return (
     <>
       <div className="stat-tiles">
         <div className="stat-tile">
-          <div className="stat-value">{stats.backlog.games}</div>
+          <div className="stat-value">{backlog.games}</div>
           <div className="stat-label">games in backlog</div>
         </div>
         <div className="stat-tile">
-          <div className="stat-value">{stats.backlog.knownHours}h</div>
+          <div className="stat-value">
+            {/* A tilde reads as "about"; an asterisk promises a footnote. */}
+            {backlog.estimatedHours != null && backlog.unknownLength > 0 ? "~" : ""}
+            {backlog.estimatedHours ?? backlog.knownHours}h
+          </div>
           <div className="stat-label">
-            of known backlog
-            {stats.backlog.unknownLength > 0 && ` (+${stats.backlog.unknownLength} unsized)`}
+            {backlog.estimatedHours != null && backlog.unknownLength > 0
+              ? `to clear it — ${backlog.knownHours}h known, ${backlog.unknownLength} unsized costed at the ${backlog.medianLength}h median`
+              : "of backlog ahead of you"}
+          </div>
+        </div>
+        <div className="stat-tile">
+          <div className="stat-value">{stats.finishedThisYear}</div>
+          <div className="stat-label">
+            finished this year
+            {stats.finishedLastYear > 0 &&
+              ` — ${yearDelta === 0 ? "same as" : `${Math.abs(yearDelta)} ${yearDelta > 0 ? "more" : "fewer"} than`} last year`}
           </div>
         </div>
         <div className="stat-tile">
@@ -101,6 +117,37 @@ export default function Stats() {
                 +{stats.untrackedFinishes} finished before date tracking existed.
               </p>
             )}
+          </>
+        )}
+      </div>
+
+      {stats.genres.length > 0 && (
+        <div className="settings-card">
+          <h3>Where your time goes</h3>
+          <p className="hint">
+            Hours played by genre. A game with several genres counts under each, so these overlap
+            rather than adding up to your total.
+          </p>
+          <BarList rows={stats.genres.map((g) => ({ label: g.genre, value: g.hours }))} />
+        </div>
+      )}
+
+      <div className="settings-card">
+        <h3>Your ratings</h3>
+        {stats.personal.rated === 0 ? (
+          <p className="hint">
+            You haven&rsquo;t rated anything yet. Use <b>Rate</b> on a game card to score it out of
+            10 — your score replaces the critic rating when ranking that game.
+          </p>
+        ) : (
+          <>
+            <p className="hint">
+              {stats.personal.rated} game{stats.personal.rated === 1 ? "" : "s"} rated, averaging{" "}
+              <b>{stats.personal.average}/10</b>.
+            </p>
+            <BarList
+              rows={stats.personal.top.map((g) => ({ label: g.title, value: g.personal_rating }))}
+            />
           </>
         )}
       </div>
