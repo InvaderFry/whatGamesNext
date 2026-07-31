@@ -3,8 +3,8 @@
 Handoff notes for whatever picks this up next. Everything here comes out of a feature review of the
 whole codebase; the items already built are listed at the bottom for context.
 
-**Branch:** `claude/repo-feature-review-j0tb5p` (10 commits ahead of the `main` merge of PR #3).
-**Suite:** 213 tests — 135 server, 78 web. CI runs `npm test`, `npm run typecheck`, `npm run lint`,
+**Branch:** `claude/roadmap-review-plan-919s30`.
+**Suite:** 257 tests — 174 server, 83 web. CI runs `npm test`, `npm run typecheck`, `npm run lint`,
 `npm run format:check`; all four should stay green.
 
 ---
@@ -38,9 +38,12 @@ Worth reading before writing anything, so new work doesn't look bolted on.
 
 ### Environment gotchas that cost time
 
-- **All Steam domains are unreachable** from the dev sandbox under its network policy
-  (`api.steampowered.com`, `store.steampowered.com`, `steamcommunity.com` — curl exit 56). Anything
-  touching the Steam API has to be built against fixtures and verified by unit test, not live calls.
+- **Every external data source is unreachable** from the dev sandbox under its network policy — all
+  Steam domains (`api.steampowered.com`, `store.steampowered.com`, `steamcommunity.com`) and also
+  `api.rawg.io` and `howlongtobeat.com`, all curl exit 56. Only the npm registry resolves. Anything
+  touching a source has to be built against fixtures and verified by unit test, and the demo library
+  is the only way to drive the real UI. Worth weighing when picking what to do next: the roadmap
+  items that lean hardest on Steam are the ones that can't be confirmed here at all.
 - **jsdom has no `Element.prototype.scrollIntoView`** — stubbed in `web/src/test-setup.ts`.
 - Playwright is at `/opt/pw-browsers`; don't run `playwright install`.
 - `data/` is gitignored. `rm -f data/games.db*` then restart with `DEMO=1` for a clean library.
@@ -49,43 +52,11 @@ Worth reading before writing anything, so new work doesn't look bolted on.
 
 ---
 
-## Recommendation 6 — colliding titles
-
-**The last data-integrity item, and the only remaining schema change.** Deliberately left alone
-because it deserves its own round.
-
-`normalized_title` is `NOT NULL UNIQUE` (`server/src/db.ts`) and is how all three upserts match. Two
-genuinely different games that normalize the same silently merge: the second upsert finds the first
-and _updates_ it instead of inserting. Nothing reports it.
-
-PR #3 made this much rarer by fixing edition-suffix over-stripping (`Persona 5 Royal` no longer
-collapses into `Persona 5`), but real collisions remain and they're not exotic — remakes and reboots
-share names with their originals constantly: DOOM (1993/2016), Prey (2006/2017), Tomb Raider
-(1996/2013), Call of Duty: Modern Warfare (2007/2019).
-
-**Read this before designing:** the obvious fix — a `(normalized_title, release_year)` unique key —
-**does not work**. `release_date` is populated by RAWG during _enrichment_, and sync runs before
-that, so at the moment you need to tell two games apart the year is `NULL` for both.
-
-The genuine tension is that title matching exists to _merge across stores_ — the same game owned on
-Steam and Epic should collapse to one row with `store: 'both'`. Any fix has to keep that working.
-Two directions worth weighing:
-
-- **Prefer an authoritative id where one exists.** Match on `steam_appid` first when present, fall
-  back to normalized title. Distinguishes two Steam games sharing a name without needing the year,
-  but does nothing for two Epic or two GOG entries.
-- **Keep the key, surface the merge.** Report merges in the sync result — "Merged _DOOM_ into an
-  existing entry" — so a wrong collapse is visible instead of silent. Much less invasive, and it
-  addresses the actual harm (silence) rather than the collision itself.
-
-The sync response already carries `added` / `updated` / `promoted`, and Settings already renders that
-as prose, so surfacing a merge list has somewhere to go.
-
----
-
 ## Feature ideas still open
 
-Ranked by what I'd do next.
+Ranked by what I'd do next. Export/import used to sit at #2 here and was done first: it protects the
+only data in the app that can't be re-derived, and it was verifiable end to end in a sandbox that
+can't reach Steam.
 
 ### 1. Steam achievements + recently-played
 
@@ -102,14 +73,12 @@ contributes nothing to what the app has learned about you.
 Fail soft: the achievements endpoint 403s for private profiles and for games that have no
 achievements at all. Neither is an error worth showing.
 
-### 2. Export / import
+### 2. Import from other trackers
 
-The only data in this app that can't be re-derived by re-syncing is what the user authored: status,
-`personal_rating`, `notes`, `queue_position`, `finished_at`. That's the case for export — it's a
-backup of the irreplaceable part.
-
-JSON for round-tripping, CSV for spreadsheets. Import from Backloggd / HLTB / GOG Galaxy is a
-bigger, separate job — `lib/import.ts` already has a solid quote-aware CSV parser to build on.
+Export/import of your own data is done (`lib/backup.ts`). Pulling a history _in_ from Backloggd,
+HLTB or GOG Galaxy is the separate, bigger job it always was: each has its own export shape, and
+each needs mapping onto the four statuses and a 1–10 scale. `lib/import.ts` now has a record
+splitter that keeps quoted newlines intact, so the CSV side of it is groundwork already laid.
 
 ### 3. Wishlist mode
 
@@ -180,11 +149,28 @@ For context on what's been touched, and so nothing gets built twice.
 | F7  | Personal 1–10 rating + notes                                      | `808f441`            |
 | F9  | Richer Stats — genre breakdown, backlog estimate, year-on-year    | `808f441`            |
 | F5  | Learned taste from your own history                               | `683d0db`            |
+| R6  | Match on a store id first, so two DOOMs stay two rows             | `911a001`            |
+| F4  | Backup/restore of everything you authored (JSON + CSV)            | `39b8559`            |
 
-Two things shipped with known, deliberate limits, in case they look like oversights:
+Things shipped with known, deliberate limits, in case they look like oversights:
 
 - **URL state uses `replaceState` only.** Bookmark, reload and share work; back/forward _between_
   filter states does not. Adding a `popstate` listener is the follow-up if it's wanted.
 - **The taste model is a feedback loop by construction.** It surfaces more of what you already play.
   The Stats section makes the bias visible and the weight slider turns it down; that's the mitigation,
   not a fix.
+- **A pasted list can still collide.** R6 keys on a store's own id, and a title typed into Settings →
+  Other stores has none, so two same-named games imported that way still merge. It's reported now
+  rather than silent, which is as far as it goes without an id to key on.
+- **A backup holds no games, only what you wrote about them.** Restoring into an empty library
+  restores nothing and says so. That's deliberate — the alternative is inventing rows for titles
+  with no store, no ratings and no lengths behind them.
+
+Two small things noticed while working and left open:
+
+- **`.btn` was scoped to `button`**, so the first pass at the download links rendered as bare text.
+  Fixed by broadening the selector, but it's the sort of thing only a screenshot catches — the
+  test suite was green through both versions.
+- **Enrichment still can't be stopped** once started. A 1,500-game run is ~25 minutes and the only
+  way out is restarting the server, which the interrupted-run notice then explains. A cancel flag
+  the workers check between games would be a small, self-contained job.
