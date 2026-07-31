@@ -31,6 +31,9 @@ haven't set yourself: once you change a status by hand, that game is yours and s
 The **Stats** page tracks your play history: backlog size and hours, games finished per year
 (finish dates are recorded when you mark a game finished), total playtime, and abandonment rate.
 
+The UI follows your system light/dark preference, the recommendation modes are a keyboard-navigable
+tab list (arrow keys, Home/End), and `prefers-reduced-motion` is respected.
+
 ## Data sources
 
 - **Steam**: official Web API (owned games + playtime) and the public review-summary endpoint.
@@ -41,7 +44,9 @@ The **Stats** page tracks your play history: backlog size and hours, games finis
 - **Ratings**: [RAWG](https://rawg.io/apidocs) — includes Metacritic scores, user ratings, genres, tags.
 - **Length**: [HowLongToBeat](https://howlongtobeat.com) (unofficial — fails soft if it changes).
 - **Difficulty**: no public source exists, so it's estimated from genres/tags (souls-like, casual,
-  roguelike, …) on a 1–5 scale, and you can override it per game.
+  roguelike, …) on a 1–5 scale, and you can override it per game. Tags nudge a genre baseline
+  rather than replacing it — they're capped, so a game carrying four "hard" tags can't be pinned at
+  5 regardless of what it actually is. Treat it as a rough sort key, not a verdict.
 
 ## Setup
 

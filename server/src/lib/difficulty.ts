@@ -37,18 +37,24 @@ const EASY_TAGS: Record<string, number> = {
   exploration: 0.25,
 };
 
+/**
+ * Deliberately omits "action" and "indie". Both sit at the neutral 3 and are
+ * attached to a large share of any library, so including them said nothing
+ * about difficulty while dragging the average of every co-tagged genre back
+ * toward the middle — an Action/Puzzle game scored higher than a Puzzle one for
+ * no real reason. A game with no listed genre we recognise falls through to the
+ * same neutral 3 anyway.
+ */
 const GENRE_BASELINE: Record<string, number> = {
   platformer: 3.5,
   fighting: 3.5,
   shooter: 3,
-  action: 3,
   strategy: 3,
   simulation: 2.5,
   rpg: 3,
   racing: 2.5,
   sports: 2.5,
   arcade: 3,
-  indie: 3,
   adventure: 2.5,
   puzzle: 2.5,
   casual: 2,
@@ -56,6 +62,20 @@ const GENRE_BASELINE: Record<string, number> = {
   educational: 1.5,
   card: 2.5,
 };
+
+/**
+ * Cap on the total tag adjustment. Community tags stack — souls-like,
+ * difficult, permadeath and bullet hell routinely appear on one game — and
+ * uncapped they sum to well past the whole 1–5 range, pinning the score at an
+ * extreme regardless of genre.
+ *
+ * Two is deliberate: a pair of strong tags (souls-like + difficult, worth 4
+ * raw) still has to reach 5 from a mid genre, while a game whose genre is
+ * genuinely gentle tops out around 4. Tightening it further started disagreeing
+ * with itself — Sekiro (Action/Adventure) and Dark Souls III (Action/RPG) carry
+ * identical tags but landed a level apart purely on their second genre.
+ */
+const MAX_TAG_ADJUSTMENT = 2;
 
 export function deriveDifficulty(genres: string[], tags: string[]): number {
   const lowerGenres = genres.map((g) => g.toLowerCase());
@@ -74,6 +94,7 @@ export function deriveDifficulty(genres: string[], tags: string[]): number {
     if (HARD_TAGS[t] !== undefined) adjust += HARD_TAGS[t];
     if (EASY_TAGS[t] !== undefined) adjust -= EASY_TAGS[t];
   }
+  adjust = Math.min(MAX_TAG_ADJUSTMENT, Math.max(-MAX_TAG_ADJUSTMENT, adjust));
 
   return Math.min(5, Math.max(1, Math.round(base + adjust)));
 }

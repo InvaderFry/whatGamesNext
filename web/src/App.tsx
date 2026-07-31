@@ -37,9 +37,16 @@ export default function App() {
         <h1>
           whatGames<span>Next</span>
         </h1>
-        <nav className="nav">
+        <nav className="nav" aria-label="Main">
           {PAGES.map(([key, label]) => (
-            <button key={key} className={page === key ? "active" : ""} onClick={() => setPage(key)}>
+            <button
+              key={key}
+              // Navigation rather than tabs, so the active page is announced
+              // with aria-current instead of a tablist's aria-selected.
+              aria-current={page === key ? "page" : undefined}
+              className={page === key ? "active" : ""}
+              onClick={() => setPage(key)}
+            >
               {label}
             </button>
           ))}

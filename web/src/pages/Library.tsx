@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Facets, type Game } from "../api";
 import GameCard from "../components/GameCard";
+import SkeletonGrid from "../components/SkeletonGrid";
 import { toast } from "../components/Toasts";
 import { readUrl, writeUrl } from "../urlState";
 
@@ -269,11 +270,15 @@ export default function Library() {
           Head to <b>Settings</b> to sync your Steam and Epic libraries.
         </div>
       )}
-      <div className="grid">
-        {(games ?? []).map((g) => (
-          <GameCard key={g.id} game={g} onChanged={() => void load()} />
-        ))}
-      </div>
+      {games === null && !error ? (
+        <SkeletonGrid />
+      ) : (
+        <div className="grid">
+          {(games ?? []).map((g) => (
+            <GameCard key={g.id} game={g} onChanged={() => void load()} />
+          ))}
+        </div>
+      )}
 
       {games && total > 0 && (
         <div className="pager">

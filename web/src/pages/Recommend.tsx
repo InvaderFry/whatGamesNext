@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api,
   difficultyLabel,
@@ -9,6 +9,7 @@ import {
   type Weights,
 } from "../api";
 import GameCard from "../components/GameCard";
+import SkeletonGrid from "../components/SkeletonGrid";
 import { toast } from "../components/Toasts";
 
 const MODES: [string, string, string][] = [
@@ -41,8 +42,23 @@ export default function Recommend() {
   const [maxDifficulty, setMaxDifficulty] = useState("");
   const [facets, setFacets] = useState<Facets>({ genres: [], tags: [] });
 
+  const chipRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
   // Bumping `roll` forces a re-fetch (surprise rerolls, card edits).
   const reload = () => setRoll((r) => r + 1);
+
+  function onChipKeyDown(e: React.KeyboardEvent, index: number) {
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+    let next = index;
+    if (step !== 0) next = (index + step + MODES.length) % MODES.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = MODES.length - 1;
+    else return;
+
+    e.preventDefault();
+    setMode(MODES[next][0]);
+    chipRefs.current[next]?.focus();
+  }
 
   useEffect(() => {
     api
@@ -82,9 +98,24 @@ export default function Recommend() {
 
   return (
     <>
-      <div className="mode-chips">
-        {MODES.map(([key, label]) => (
-          <button key={key} className={mode === key ? "active" : ""} onClick={() => setMode(key)}>
+      {/* A real tablist, which means owning its keyboard contract: arrows move
+          between modes and only the selected chip is in the tab order. */}
+      <div className="mode-chips" role="tablist" aria-label="Recommendation mode">
+        {MODES.map(([key, label], i) => (
+          <button
+            key={key}
+            id={`mode-${key}`}
+            role="tab"
+            aria-selected={mode === key}
+            aria-controls="mode-panel"
+            tabIndex={mode === key ? 0 : -1}
+            ref={(el) => {
+              chipRefs.current[i] = el;
+            }}
+            className={mode === key ? "active" : ""}
+            onClick={() => setMode(key)}
+            onKeyDown={(e) => onChipKeyDown(e, i)}
+          >
             {label}
           </button>
         ))}
@@ -233,17 +264,21 @@ export default function Recommend() {
           )}
         </div>
       )}
-      <div className="grid">
-        {(results ?? []).map((r) => (
-          <GameCard
-            key={`${r.game.id}-${roll}`}
-            game={r.game}
-            reason={r.reason}
-            breakdown={r.breakdown}
-            onChanged={reload}
-          />
-        ))}
-      </div>
+      {results === null && !error ? (
+        <SkeletonGrid count={6} />
+      ) : (
+        <div className="grid" role="tabpanel" id="mode-panel" aria-labelledby={`mode-${mode}`}>
+          {(results ?? []).map((r) => (
+            <GameCard
+              key={`${r.game.id}-${roll}`}
+              game={r.game}
+              reason={r.reason}
+              breakdown={r.breakdown}
+              onChanged={reload}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }
