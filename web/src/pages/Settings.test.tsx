@@ -235,6 +235,32 @@ describe("Settings", () => {
     expect(screen.queryByText(/Control → Control/)).not.toBeInTheDocument();
   });
 
+  it("drops the merge list when the next action starts", async () => {
+    const user = userEvent.setup();
+    syncSteam.mockResolvedValue({
+      source: "steam",
+      fetched: 100,
+      added: 0,
+      updated: 100,
+      promoted: 0,
+      merged: [{ title: "Control", into: "Control", store: "epic" }],
+    });
+    restoreBackup.mockResolvedValue({ restored: 1, unchanged: 0, notFound: [] });
+    render(<Settings />);
+    await screen.findByText(/10 games total/);
+
+    await user.click(screen.getByRole("button", { name: "Sync Steam library" }));
+    await screen.findByText(/Control → Control/);
+
+    // Left up, the list reads as if the restore had done the merging.
+    await user.upload(
+      screen.getByLabelText("Restore"),
+      new File(["{}"], "backup.json", { type: "application/json" }),
+    );
+    await screen.findByText(/Restored 1 game/);
+    expect(screen.queryByText(/Control → Control/)).not.toBeInTheDocument();
+  });
+
   it("restores a backup file and says what came back", async () => {
     const user = userEvent.setup();
     restoreBackup.mockResolvedValue({ restored: 12, unchanged: 3, notFound: [] });

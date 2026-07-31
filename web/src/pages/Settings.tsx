@@ -95,6 +95,9 @@ export default function Settings() {
     setBusy(name);
     setError(null);
     setMessage(null);
+    // Merges belong to the action that caused them. Left up, the list reads as
+    // if the next thing you clicked had done it.
+    setMerged([]);
     try {
       const r = await fn();
       setMessage(successMsg(r));

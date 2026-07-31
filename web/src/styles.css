@@ -143,7 +143,9 @@ textarea {
   font-family: inherit;
 }
 
-button.btn {
+/* Anchors carry this too: a download is a link, not a button, but it belongs
+   in the same row as one and should look like it. */
+.btn {
   background: var(--accent);
   color: #fff;
   border: none;
@@ -152,15 +154,17 @@ button.btn {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  display: inline-block;
+  text-decoration: none;
 }
-button.btn:hover {
+.btn:hover {
   filter: brightness(1.1);
 }
 button.btn:disabled {
   opacity: 0.5;
   cursor: default;
 }
-button.btn.secondary {
+.btn.secondary {
   background: var(--bg-card);
   border: 1px solid var(--border);
   color: var(--text);
