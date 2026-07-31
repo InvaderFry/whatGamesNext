@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type SettingsMap, type SyncStatus } from "../api";
+import { api, type SettingsMap, type SyncResult, type SyncStatus } from "../api";
 
 const SETTING_FIELDS: [keyof SettingsMap, string, string][] = [
   ["steam_api_key", "Steam API key", "From steamcommunity.com/dev/apikey"],
@@ -17,7 +17,9 @@ export default function Settings() {
   const [manualText, setManualText] = useState("");
   const [importText, setImportText] = useState("");
   const [importStore, setImportStore] = useState("gog");
+  const [justAdded, setJustAdded] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const offerRef = useRef<HTMLDivElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -44,19 +46,43 @@ export default function Settings() {
     if (!pollRef.current) pollRef.current = setInterval(() => void refresh(), 2000);
   }
 
-  async function run(name: string, fn: () => Promise<unknown>, successMsg: (r: never) => string) {
+  /** Returns the result, or undefined if the call failed. */
+  async function run<T>(
+    name: string,
+    fn: () => Promise<T>,
+    successMsg: (r: T) => string,
+  ): Promise<T | undefined> {
     setBusy(name);
     setError(null);
     setMessage(null);
     try {
       const r = await fn();
-      setMessage(successMsg(r as never));
+      setMessage(successMsg(r));
       await refresh();
+      return r;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      return undefined;
     } finally {
       setBusy(null);
     }
+  }
+
+  /** A sync that brought in new games offers to enrich them, rather than
+   *  leaving the user to find the button on their own. */
+  async function runSync(name: string, fn: () => Promise<SyncResult>, label: string) {
+    const r = await run(name, fn, (r) => {
+      const parts = [`${label}: fetched ${r.fetched} games, ${r.added} new.`];
+      // The promotion sweep is library-wide, so it's reported as its own fact
+      // rather than folded into this sync's tally.
+      if (r.promoted > 0) {
+        parts.push(
+          `${r.promoted} game${r.promoted === 1 ? "" : "s"} marked as playing based on playtime.`,
+        );
+      }
+      return parts.join(" ");
+    });
+    if (r && r.added > 0) setJustAdded(r.added);
   }
 
   async function saveSettings() {
@@ -83,11 +109,45 @@ export default function Settings() {
 
   const enrich = status?.enrichment;
   const lib = status?.library;
+  const pending = lib?.enrich_pending ?? 0;
+  const offerEnrich = justAdded != null && pending > 0 && !enrich?.running;
+
+  // The sync buttons are scattered down a long page, so the offer renders well
+  // above wherever the user just clicked. Bring it to them.
+  useEffect(() => {
+    if (offerEnrich) offerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [offerEnrich]);
 
   return (
     <>
       {message && <div className="notice">{message}</div>}
       {error && <div className="notice error">{error}</div>}
+
+      {offerEnrich && (
+        <div className="notice" ref={offerRef}>
+          <p style={{ margin: "0 0 10px" }}>
+            Added {justAdded} game{justAdded === 1 ? "" : "s"}. {pending} game
+            {pending === 1 ? " has" : "s have"} no ratings, lengths or difficulty yet, and the
+            recommendations lean on all three.
+          </p>
+          <div className="row" style={{ margin: 0 }}>
+            <button
+              className="btn"
+              disabled={busy !== null}
+              onClick={() => {
+                setJustAdded(null);
+                void run("enrich", api.startEnrich, () => "Enrichment started.");
+                startPolling();
+              }}
+            >
+              Enrich {pending} game{pending === 1 ? "" : "s"} now
+            </button>
+            <button className="btn secondary" onClick={() => setJustAdded(null)}>
+              Later
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="settings-card">
         <h3>Library</h3>
@@ -174,14 +234,7 @@ export default function Settings() {
           <button
             className="btn"
             disabled={busy !== null || !status?.config.steamConfigured}
-            onClick={() =>
-              void run(
-                "steam",
-                api.syncSteam,
-                (r: { fetched: number; added: number }) =>
-                  `Steam: fetched ${r.fetched} games, ${r.added} new.`,
-              )
-            }
+            onClick={() => void runSync("steam", api.syncSteam, "Steam")}
           >
             {busy === "steam" ? "Syncing…" : "Sync Steam library"}
           </button>
@@ -202,14 +255,7 @@ export default function Settings() {
           <button
             className="btn"
             disabled={busy !== null}
-            onClick={() =>
-              void run(
-                "epic",
-                api.syncEpic,
-                (r: { fetched: number; added: number }) =>
-                  `Epic: fetched ${r.fetched} games, ${r.added} new.`,
-              )
-            }
+            onClick={() => void runSync("epic", api.syncEpic, "Epic")}
           >
             {busy === "epic" ? "Syncing…" : "Sync via legendary"}
           </button>
@@ -228,12 +274,7 @@ export default function Settings() {
             className="btn secondary"
             disabled={busy !== null || !manualText.trim()}
             onClick={() =>
-              void run(
-                "epic-manual",
-                () => api.syncEpicManual(manualText),
-                (r: { fetched: number; added: number }) =>
-                  `Imported ${r.fetched} Epic titles, ${r.added} new.`,
-              )
+              void runSync("epic-manual", () => api.syncEpicManual(manualText), "Epic paste")
             }
           >
             Import pasted titles
@@ -275,12 +316,7 @@ export default function Settings() {
             className="btn secondary"
             disabled={busy !== null || !importText.trim()}
             onClick={() =>
-              void run(
-                "import",
-                () => api.syncImport(importStore, importText),
-                (r: { fetched: number; added: number }) =>
-                  `Imported ${r.fetched} titles, ${r.added} new.`,
-              )
+              void runSync("import", () => api.syncImport(importStore, importText), "Import")
             }
           >
             Import titles

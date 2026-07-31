@@ -18,7 +18,15 @@ ranks your backlog in several ways:
 
 The **Library** page lets you sort by rating / Metacritic / Steam review % / length / difficulty /
 playtime / release date, and filter by store, status, length bucket, genre, and tag. Each game can
-be marked playing / finished / abandoned, hidden, or given a manual difficulty override.
+be marked playing / finished / abandoned, hidden, or given a manual difficulty override. Filters,
+sort and page are kept in the URL, so a view can be bookmarked or shared. Games synced from Steam
+also get **Play** and **Store** links straight from the card.
+
+A game with at least two hours on the clock is marked **playing** automatically on sync — stores
+report playtime but never whether you consider a game started, so without this a game with 200
+hours would sit at "unplayed" forever. Two hours is Steam's own refund window, and a fair line
+between trying something and actually playing it. This only ever applies to games whose status you
+haven't set yourself: once you change a status by hand, that game is yours and sync leaves it alone.
 
 The **Stats** page tracks your play history: backlog size and hours, games finished per year
 (finish dates are recorded when you mark a game finished), total playtime, and abandonment rate.
