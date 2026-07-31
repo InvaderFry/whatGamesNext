@@ -211,6 +211,19 @@ describe("GET /api/recommend", () => {
     expect(res.body.total).toBe(5);
   });
 
+  it("leaves games of unknown difficulty out of a maxDifficulty filter", async () => {
+    seed([
+      { title: "Known Easy", metacritic: 90, hltb_main: 10, difficulty: 2 },
+      { title: "Unknown", metacritic: 90, hltb_main: 10, difficulty: null },
+    ]);
+    // Consistent with how a null rating is treated: asked for "this hard or
+    // easier", a game we can't place doesn't qualify.
+    const res = await request(app).get("/api/recommend?maxDifficulty=3");
+    expect(res.body.results.map((r: { game: { title: string } }) => r.game.title)).toEqual([
+      "Known Easy",
+    ]);
+  });
+
   it("applies the genre filter before scoring", async () => {
     seed([
       { title: "Actioner", metacritic: 90, hltb_main: 10, genres: ["Action"] },

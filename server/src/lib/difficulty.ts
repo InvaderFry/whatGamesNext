@@ -22,6 +22,13 @@ const HARD_TAGS: Record<string, number> = {
   competitive: 0.5,
 };
 
+/**
+ * Only tags that say something about *challenge* belong here. "Story rich",
+ * "atmospheric" and "exploration" were removed: they describe narrative and
+ * mood, not difficulty — Disco Elysium and Dark Souls III are both story rich —
+ * and "story rich" alone sits on roughly half a typical library, so it was
+ * quietly shifting most of it toward easy.
+ */
 const EASY_TAGS: Record<string, number> = {
   casual: 1.5,
   relaxing: 2,
@@ -30,11 +37,8 @@ const EASY_TAGS: Record<string, number> = {
   cozy: 2,
   "point and click": 1,
   "point & click": 1,
-  "story rich": 0.5,
-  atmospheric: 0.25,
   family: 1,
   "family friendly": 1,
-  exploration: 0.25,
 };
 
 /**
@@ -77,23 +81,42 @@ const GENRE_BASELINE: Record<string, number> = {
  */
 const MAX_TAG_ADJUSTMENT = 2;
 
-export function deriveDifficulty(genres: string[], tags: string[]): number {
+/** Starting point when tags are the only signal and no genre is recognised. */
+const NEUTRAL_BASE = 3;
+
+/**
+ * Returns 1–5, or null when nothing in the game's genres or tags is a
+ * difficulty signal. Null matters: returning a confident "3 — Moderate" for a
+ * game we know nothing about is indistinguishable from one we actually judged
+ * to be moderate, and "Moderate" across a whole library carries no information.
+ * The UI already renders a missing difficulty as "?" and sorts it last.
+ */
+export function deriveDifficulty(genres: string[], tags: string[]): number | null {
   const lowerGenres = genres.map((g) => g.toLowerCase());
   const lowerTags = tags.map((t) => t.toLowerCase());
 
-  let base = 3;
   const baselines = lowerGenres
     .map((g) => GENRE_BASELINE[g])
     .filter((v): v is number => v !== undefined);
-  if (baselines.length) {
-    base = baselines.reduce((a, b) => a + b, 0) / baselines.length;
-  }
 
   let adjust = 0;
+  let matchedTag = false;
   for (const t of lowerTags) {
-    if (HARD_TAGS[t] !== undefined) adjust += HARD_TAGS[t];
-    if (EASY_TAGS[t] !== undefined) adjust -= EASY_TAGS[t];
+    if (HARD_TAGS[t] !== undefined) {
+      adjust += HARD_TAGS[t];
+      matchedTag = true;
+    }
+    if (EASY_TAGS[t] !== undefined) {
+      adjust -= EASY_TAGS[t];
+      matchedTag = true;
+    }
   }
+
+  if (!baselines.length && !matchedTag) return null;
+
+  const base = baselines.length
+    ? baselines.reduce((a, b) => a + b, 0) / baselines.length
+    : NEUTRAL_BASE;
   adjust = Math.min(MAX_TAG_ADJUSTMENT, Math.max(-MAX_TAG_ADJUSTMENT, adjust));
 
   return Math.min(5, Math.max(1, Math.round(base + adjust)));
