@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { listGames } from "../lib/library.js";
+import { computeTasteProfile } from "../lib/taste.js";
 import {
   recommend,
   DEFAULT_WEIGHTS,
@@ -55,8 +56,14 @@ recommendRouter.get("/recommend", (req, res) => {
       q.maxDifficulty != null && q.maxDifficulty !== "" ? Number(q.maxDifficulty) : undefined,
   });
 
+  // Learned from the whole library, deliberately not from `games` above: that
+  // list is already narrowed by the genre/tag/difficulty filters, so learning
+  // taste from it would just reflect the filter back. Hidden and finished games
+  // are evidence even though they're never recommended.
+  const taste = computeTasteProfile(listGames({ includeHidden: true }));
+
   const limit = q.limit != null && !Number.isNaN(Number(q.limit)) ? Number(q.limit) : 25;
-  const scored = recommend(games, mode, { budgetHours, weights });
+  const scored = recommend(games, mode, { budgetHours, weights, taste });
   const results = scored.slice(0, limit);
   res.json({
     mode,

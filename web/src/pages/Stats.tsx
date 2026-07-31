@@ -2,12 +2,30 @@ import { useEffect, useState } from "react";
 import { api, type Stats as StatsData } from "../api";
 import SkeletonGrid from "../components/SkeletonGrid";
 
+/** Below this the profile is noise, so the page says so instead of showing it. */
+const MIN_TASTE_OBSERVATIONS = 5;
+
 const STATUS_LABELS: [keyof StatsData["statusCounts"], string][] = [
   ["unplayed", "Unplayed"],
   ["playing", "Playing"],
   ["finished", "Finished"],
   ["abandoned", "Abandoned"],
 ];
+
+/**
+ * Distance from the user's own baseline, as a magnitude. The section heading
+ * carries the direction: plotting the raw affinity would give the *least*
+ * disliked entry the longest bar, since BarList scales to the largest value.
+ */
+function gapRow(
+  t: StatsData["taste"]["liked"][number],
+  baseline: number,
+): { label: string; value: number } {
+  return {
+    label: `${t.key} (${t.evidence})`,
+    value: Math.abs(Math.round(t.affinity * 100) - baseline),
+  };
+}
 
 function BarList({ rows }: { rows: { label: string; value: number }[] }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
@@ -131,6 +149,50 @@ export default function Stats() {
           <BarList rows={stats.genres.map((g) => ({ label: g.genre, value: g.hours }))} />
         </div>
       )}
+
+      <div className="settings-card">
+        <h3>What you actually like</h3>
+        {stats.taste.observations < MIN_TASTE_OBSERVATIONS ? (
+          <p className="hint">
+            Not enough history yet — {stats.taste.observations} game
+            {stats.taste.observations === 1 ? " has" : "s have"} a rating or a finished/abandoned
+            verdict. Once there are a few more, recommendations start leaning toward the genres and
+            tags you actually stick with.
+          </p>
+        ) : (
+          <>
+            <p className="hint">
+              Learned from {stats.taste.observations} games you rated, finished or dropped — you
+              stick with {stats.taste.baseline}% of what you start. Below is how far each genre or
+              tag sits from that average, in points, with the number of games behind it. These nudge
+              the <b>Play next</b> ranking; turn the <b>Your taste</b> slider down under <b>Tune</b>{" "}
+              to ignore them.
+            </p>
+            {stats.taste.liked.length > 0 && (
+              <>
+                <p className="hint">
+                  <b>You stick with</b>
+                </p>
+                <BarList rows={stats.taste.liked.map((t) => gapRow(t, stats.taste.baseline))} />
+              </>
+            )}
+            {stats.taste.disliked.length > 0 && (
+              <>
+                <p className="hint">
+                  <b>You bounce off</b>
+                </p>
+                <BarList rows={stats.taste.disliked.map((t) => gapRow(t, stats.taste.baseline))} />
+              </>
+            )}
+            {stats.taste.liked.length === 0 && stats.taste.disliked.length === 0 && (
+              <p className="hint">
+                Nothing stands out yet — no genre or tag has enough behind it to separate from your
+                average.
+              </p>
+            )}
+          </>
+        )}
+      </div>
 
       <div className="settings-card">
         <h3>Your ratings</h3>

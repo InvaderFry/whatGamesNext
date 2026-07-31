@@ -33,6 +33,16 @@ The **Shortlist** page is an ordered "next up" queue. Star a game from anywhere 
 reorder with the ↑/↓ buttons — so a pick you liked survives a refresh instead of being re-rolled
 away.
 
+Over time the app **learns what you actually stick with**. Every game you rate, finish or abandon is
+evidence, and the genres and tags that stand out from your own average nudge the "Play next"
+ranking — so if you finish RPGs and drop shooters, it stops suggesting shooters. Stats shows exactly
+what it thinks it has learned, and the **Your taste** slider under Tune turns it down or off.
+
+Two honest caveats. It only speaks up once there's enough history — before that it's inert and
+changes nothing. And it is a feedback loop by construction: it will tend to surface more of what you
+already play, which is the point but also worth knowing. The slider is there for when you want to be
+surprised instead.
+
 Every game takes **your own 1–10 score and a free-text note** ("dropped at the swamp"). Where you've
 scored something, that score is what the recommendations rank it by — you've played it and a critic
 hasn't played it for you.
