@@ -301,14 +301,18 @@ export default function Settings() {
                   would also focus the input it's covering. Both this and Clear
                   name their own field — three buttons all called "Clear" is a
                   screen reader being told nothing. */}
-              {secret && (
+              {secret ? (
                 <button
-                  className="btn secondary"
+                  className="btn secondary reveal-toggle"
                   aria-label={`${shown ? "Hide" : "Show"} ${label}`}
                   onClick={() => setRevealed((r) => ({ ...r, [key]: !r[key] }))}
                 >
                   {shown ? "Hide" : "Show"}
                 </button>
+              ) : (
+                // Holds the toggle's column open so this row's input ends where
+                // the other two do. Decorative, hence hidden from the tree.
+                <span className="reveal-toggle" aria-hidden="true" />
               )}
               {info?.source === "settings" && (
                 <button
