@@ -529,6 +529,17 @@ button.btn:disabled {
   margin-top: 10px;
   flex-wrap: wrap;
 }
+
+/* Sized to hold the wider of its two labels rather than to its current one.
+   "Show" renders 7px wider than "Hide", so a toggle sized to its own text
+   resized the input it acts on every time you clicked it. The same width, held
+   empty, is what lets the SteamID row — which has nothing to reveal — line its
+   input up with the two that do instead of running 80px further right. */
+.reveal-toggle {
+  min-width: 70px;
+  text-align: center;
+  display: inline-block;
+}
 .status-ok {
   color: var(--good);
 }
@@ -716,6 +727,14 @@ button.btn:disabled {
      shrink too. */
   .settings-card .row > label {
     min-width: 0;
+  }
+
+  /* The spacer that lines the rows up on a desktop costs a phone 70px of an
+     input that's already down to about a dozen visible characters. At this
+     width a key you can read back beats three edges agreeing, so the column is
+     only held open where there's room to hold it. */
+  .settings-card .row > span.reveal-toggle {
+    display: none;
   }
 
   /* The restore picker's intrinsic width is ~250px, which becomes its automatic

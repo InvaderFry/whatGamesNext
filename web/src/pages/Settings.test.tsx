@@ -80,6 +80,52 @@ beforeEach(() => {
   startEnrich.mockResolvedValue({ started: true });
 });
 
+describe("Settings — API keys", () => {
+  it("masks the API keys until you ask to see them", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await screen.findByText(/10 games total/);
+
+    const field = screen.getByLabelText("Steam API key");
+    expect(field).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: "Show Steam API key" }));
+    expect(field).toHaveAttribute("type", "text");
+    // The button says what it will do next, so it can't be a dead end.
+    await user.click(screen.getByRole("button", { name: "Hide Steam API key" }));
+    expect(field).toHaveAttribute("type", "password");
+  });
+
+  it("reveals one key without revealing the other", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await screen.findByText(/10 games total/);
+
+    await user.click(screen.getByRole("button", { name: "Show RAWG API key" }));
+    expect(screen.getByLabelText("RAWG API key")).toHaveAttribute("type", "text");
+    expect(screen.getByLabelText("Steam API key")).toHaveAttribute("type", "password");
+  });
+
+  it("leaves the SteamID visible, since it isn't a secret", async () => {
+    render(<Settings />);
+    await screen.findByText(/10 games total/);
+
+    expect(screen.getByLabelText("SteamID64")).toHaveAttribute("type", "text");
+    expect(screen.queryByRole("button", { name: /Show SteamID64/ })).not.toBeInTheDocument();
+  });
+
+  it("names the field each Clear button clears", async () => {
+    render(<Settings />);
+    await screen.findByText(/10 games total/);
+
+    // Three rows, three buttons reading "Clear". Without the field in the
+    // accessible name they're indistinguishable to anyone not looking at them.
+    expect(screen.getByRole("button", { name: "Clear Steam API key" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear SteamID64" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear RAWG API key" })).toBeInTheDocument();
+  });
+});
+
 describe("Settings", () => {
   it("offers to enrich the games a sync just brought in", async () => {
     const user = userEvent.setup();

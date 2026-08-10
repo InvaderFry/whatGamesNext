@@ -1,9 +1,25 @@
 import { Router } from "express";
 import { getDb, type GameRow } from "../db.js";
 import { listGames, countGames, type GameFilters, type SortKey } from "../lib/library.js";
+import { boundedNumber } from "../lib/params.js";
 import { effectiveRating } from "../lib/score.js";
 
 export const libraryRouter = Router();
+
+/**
+ * The Library page asks for 60 at a time. 200 leaves room for a caller that
+ * wants a bigger page without letting one request serialize a whole library.
+ * Omitting `limit` still returns everything — that's how the facets endpoint and
+ * the taste profile read the library, and it isn't caller-controlled.
+ */
+const LIMIT_BOUNDS = { min: 1, max: 200, fallback: null };
+
+/**
+ * An offset past the end of the library returns nothing, which the page-reset in
+ * `Library.tsx` already handles, so the ceiling is only here to keep the number
+ * sane — no library reaches a million games.
+ */
+const OFFSET_BOUNDS = { min: 0, max: 1_000_000, fallback: null };
 
 const SORT_KEYS: SortKey[] = [
   "title",
@@ -46,8 +62,8 @@ libraryRouter.get("/games", (req, res) => {
   const sort = SORT_KEYS.includes(q.sort as SortKey) ? (q.sort as SortKey) : "title";
   const dir =
     q.dir === "asc" ? "asc" : q.dir === "desc" ? "desc" : sort === "title" ? "asc" : "desc";
-  const limit = num(q.limit);
-  const offset = num(q.offset);
+  const limit = boundedNumber(q.limit, LIMIT_BOUNDS) ?? undefined;
+  const offset = boundedNumber(q.offset, OFFSET_BOUNDS) ?? undefined;
   const rows = listGames(filters, { sort, dir, limit, offset });
   // count is the total matching the filters, so paginated clients can page.
   const count = limit != null ? countGames(filters) : rows.length;

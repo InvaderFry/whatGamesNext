@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Facets, type Game } from "../api";
 import GameCard from "../components/GameCard";
 import SkeletonGrid from "../components/SkeletonGrid";
@@ -77,7 +77,30 @@ export default function Library() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  // Two guards for one bug, because they catch different halves of it.
+  //
+  // Nothing made the responses arrive in the order they were asked for, so a
+  // slow answer for an old filter could land after a fast answer for the new one
+  // and leave the grid showing games the controls no longer describe. The 300ms
+  // search debounce hid most of it, and over loopback the window is tiny — but
+  // switching store and status quickly is enough.
+  //
+  // Aborting is the better half: it stops the server work and the stale parse.
+  // What it can't do is unwind a response that already resolved before the abort
+  // landed — that microtask is queued and will run. So each call also takes a
+  // sequence number and re-checks it after the await before touching state.
+  //
+  // Both live in refs rather than the load effect's cleanup because `load` is
+  // called from two places: the effect below and a card reporting an edit.
+  const inFlight = useRef<AbortController | null>(null);
+  const latestLoad = useRef(0);
+
   const load = useCallback(async () => {
+    inFlight.current?.abort();
+    const controller = new AbortController();
+    inFlight.current = controller;
+    const seq = ++latestLoad.current;
+
     const params = new URLSearchParams();
     params.set("sort", sort);
     if (dir) params.set("dir", dir);
@@ -94,7 +117,8 @@ export default function Library() {
     params.set("limit", String(PAGE_SIZE));
     params.set("offset", String(page * PAGE_SIZE));
     try {
-      const res = await api.games(params);
+      const res = await api.games(params, controller.signal);
+      if (seq !== latestLoad.current) return;
       setGames(res.games);
       setTotal(res.count);
       setError(null);
@@ -102,6 +126,12 @@ export default function Library() {
       // us and strand the user past the last page.
       if (res.games.length === 0 && page > 0) setPage(0);
     } catch (err) {
+      // A request we cancelled ourselves isn't a failure worth a red banner —
+      // untreated, every filter change would flash one.
+      if (controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) {
+        return;
+      }
+      if (seq !== latestLoad.current) return;
       setError(err instanceof Error ? err.message : String(err));
     }
   }, [sort, dir, store, status, genre, tag, debouncedSearch, includeHidden, lengthBucket, page]);

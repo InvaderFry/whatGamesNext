@@ -39,16 +39,42 @@ function summarizeRestore(r: RestoreSummary): string {
   return parts.join(" ");
 }
 
-const SETTING_FIELDS: [keyof SettingsMap, string, string][] = [
-  ["steam_api_key", "Steam API key", "From steamcommunity.com/dev/apikey"],
-  ["steam_id", "SteamID64", "Your 17-digit SteamID (steamid.io can find it)"],
-  ["rawg_api_key", "RAWG API key", "Free at rawg.io/apidocs — used for ratings"],
+interface SettingField {
+  key: keyof SettingsMap;
+  label: string;
+  help: string;
+  /** Masked until asked for. Cover for whoever is stood behind you, no more. */
+  secret: boolean;
+}
+
+const SETTING_FIELDS: SettingField[] = [
+  {
+    key: "steam_api_key",
+    label: "Steam API key",
+    help: "From steamcommunity.com/dev/apikey",
+    secret: true,
+  },
+  {
+    key: "steam_id",
+    label: "SteamID64",
+    help: "Your 17-digit SteamID (steamid.io can find it)",
+    // Not a secret: it's the number in your own profile URL, and masking it
+    // would imply a secrecy it doesn't have.
+    secret: false,
+  },
+  {
+    key: "rawg_api_key",
+    label: "RAWG API key",
+    help: "Free at rawg.io/apidocs — used for ratings",
+    secret: true,
+  },
 ];
 
 export default function Settings() {
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [settings, setSettings] = useState<SettingsMap | null>(null);
   const [drafts, setDrafts] = useState<Partial<Record<keyof SettingsMap, string>>>({});
+  const [revealed, setRevealed] = useState<Partial<Record<keyof SettingsMap, boolean>>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -249,15 +275,19 @@ export default function Settings() {
           Stored locally in the app's database — no restart needed. A value from <code>.env</code>{" "}
           is used as a fallback when a field is unset here.
         </p>
-        {SETTING_FIELDS.map(([key, label, help]) => {
+        {SETTING_FIELDS.map(({ key, label, help, secret }) => {
           const info = settings?.[key];
+          const shown = !secret || revealed[key];
           return (
             <div className="row" key={key}>
               <label style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
                 <span style={{ minWidth: 110, fontSize: 13 }}>{label}</span>
                 <input
-                  type="text"
+                  type={shown ? "text" : "password"}
                   style={{ flex: 1 }}
+                  // A key isn't a word and isn't worth offering back later.
+                  autoComplete="off"
+                  spellCheck={false}
                   placeholder={
                     info?.configured
                       ? `configured (${info.preview}${info.source === "env" ? ", from .env" : ""})`
@@ -267,9 +297,27 @@ export default function Settings() {
                   onChange={(e) => setDrafts((d) => ({ ...d, [key]: e.target.value }))}
                 />
               </label>
+              {/* Outside the label on purpose: inside it, clicking the toggle
+                  would also focus the input it's covering. Both this and Clear
+                  name their own field — three buttons all called "Clear" is a
+                  screen reader being told nothing. */}
+              {secret ? (
+                <button
+                  className="btn secondary reveal-toggle"
+                  aria-label={`${shown ? "Hide" : "Show"} ${label}`}
+                  onClick={() => setRevealed((r) => ({ ...r, [key]: !r[key] }))}
+                >
+                  {shown ? "Hide" : "Show"}
+                </button>
+              ) : (
+                // Holds the toggle's column open so this row's input ends where
+                // the other two do. Decorative, hence hidden from the tree.
+                <span className="reveal-toggle" aria-hidden="true" />
+              )}
               {info?.source === "settings" && (
                 <button
                   className="btn secondary"
+                  aria-label={`Clear ${label}`}
                   disabled={busy !== null}
                   onClick={() => void clearSetting(key)}
                 >

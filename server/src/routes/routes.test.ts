@@ -116,6 +116,38 @@ describe("GET /api/games", () => {
     expect(res.body.games.map((g: { title: string }) => g.title)).toEqual(["Game 3", "Game 2"]);
   });
 
+  it("searches for a literal % rather than treating it as a wildcard", async () => {
+    seed([{ title: "100% Orange Juice" }, { title: "Portal 2" }, { title: "Hollow Knight" }]);
+    const res = await request(app).get("/api/games?search=%25");
+    expect(res.body.games.map((g: { title: string }) => g.title)).toEqual(["100% Orange Juice"]);
+  });
+
+  it("searches for a literal _ rather than matching any character", async () => {
+    seed([{ title: "100% Orange Juice" }, { title: "Portal 2" }, { title: "Hollow Knight" }]);
+    // Unescaped, "_" is "any one character" and matches all three.
+    const res = await request(app).get("/api/games?search=_");
+    expect(res.body.games).toEqual([]);
+  });
+
+  it("keeps matching an ordinary search term case-insensitively", async () => {
+    seed([{ title: "Portal 2" }, { title: "Hollow Knight" }]);
+    const res = await request(app).get("/api/games?search=PORTAL");
+    expect(res.body.games.map((g: { title: string }) => g.title)).toEqual(["Portal 2"]);
+  });
+
+  it("clamps a huge page size so one request can't serialize the library", async () => {
+    seed(Array.from({ length: 210 }, (_, i) => ({ title: `Game ${i}` })));
+    const res = await request(app).get("/api/games?limit=99999");
+    expect(res.body.games).toHaveLength(200);
+    expect(res.body.count).toBe(210);
+  });
+
+  it("still returns the whole library when no limit is asked for", async () => {
+    seed(Array.from({ length: 210 }, (_, i) => ({ title: `Game ${i}` })));
+    const res = await request(app).get("/api/games");
+    expect(res.body.games).toHaveLength(210);
+  });
+
   it("sorts by metacritic descending with nulls last", async () => {
     seed([
       { title: "Unrated" },
@@ -244,6 +276,81 @@ describe("GET /api/recommend", () => {
 
     const byRecency = await request(app).get("/api/recommend?w_rating=0&w_recency=2");
     expect(byRecency.body.results[0].game.title).toBe("New Good");
+  });
+
+  it("clamps an absurd limit instead of serializing the whole library", async () => {
+    seed(
+      Array.from({ length: 210 }, (_, i) => ({
+        title: `Game ${i}`,
+        metacritic: 80,
+        hltb_main: 10,
+      })),
+    );
+    const res = await request(app).get("/api/recommend?limit=99999");
+    expect(res.body.count).toBe(200);
+    // The pre-slice total still tells the truth about what matched.
+    expect(res.body.total).toBe(210);
+  });
+
+  it("treats a negative limit as one game, not as everything bar the last few", async () => {
+    seed(Array.from({ length: 5 }, (_, i) => ({ title: `Game ${i}`, metacritic: 80 + i })));
+    const res = await request(app).get("/api/recommend?limit=-2");
+    expect(res.body.count).toBe(1);
+  });
+
+  it("treats a negative weight as zero rather than inverting the ranking", async () => {
+    const games = [
+      { title: "Acclaimed", metacritic: 95, hltb_main: 10 },
+      { title: "Panned", metacritic: 45, hltb_main: 10 },
+    ];
+    seed(games);
+    const negative = await request(app).get("/api/recommend?w_rating=-2");
+    const off = await request(app).get("/api/recommend?w_rating=0");
+    const titles = (r: { body: { results: { game: { title: string } }[] } }) =>
+      r.body.results.map((x) => x.game.title);
+    expect(titles(negative)).toEqual(titles(off));
+    // And specifically: the badly-reviewed game is not promoted to the top.
+    expect(titles(negative)[0]).toBe("Acclaimed");
+  });
+
+  it("falls back to a weight's own default when its value is unreadable", async () => {
+    seed([
+      { title: "Old Great", metacritic: 95, hltb_main: 10, release_date: "2005-01-01" },
+      { title: "New Good", metacritic: 78, hltb_main: 10, release_date: "2024-01-01" },
+    ]);
+    const garbage = await request(app).get("/api/recommend?w_rating=lots");
+    const untouched = await request(app).get("/api/recommend");
+    expect(garbage.body.results.map((r: { score: number }) => r.score)).toEqual(
+      untouched.body.results.map((r: { score: number }) => r.score),
+    );
+  });
+
+  it("ignores a budget that isn't a number instead of scoring every game NaN", async () => {
+    seed([
+      { title: "Short", metacritic: 90, hltb_main: 5 },
+      { title: "Long", metacritic: 90, hltb_main: 80 },
+    ]);
+    const garbage = await request(app).get("/api/recommend?budget=whenever");
+    const none = await request(app).get("/api/recommend");
+    for (const r of garbage.body.results) expect(Number.isFinite(r.score)).toBe(true);
+    expect(garbage.body.results.map((r: { score: number }) => r.score)).toEqual(
+      none.body.results.map((r: { score: number }) => r.score),
+    );
+  });
+
+  it("clamps maxDifficulty into the 1-5 scale the estimate uses", async () => {
+    seed([
+      { title: "Relaxing", metacritic: 90, hltb_main: 10, difficulty: 1 },
+      { title: "Punishing", metacritic: 90, hltb_main: 10, difficulty: 5 },
+    ]);
+    // 0 clamps up to 1 rather than filtering the library down to nothing.
+    const low = await request(app).get("/api/recommend?maxDifficulty=0");
+    expect(low.body.results.map((r: { game: { title: string } }) => r.game.title)).toEqual([
+      "Relaxing",
+    ]);
+    // 9 clamps down to 5, which is everything — the same as no filter.
+    const high = await request(app).get("/api/recommend?maxDifficulty=9");
+    expect(high.body.total).toBe(2);
   });
 });
 

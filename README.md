@@ -151,3 +151,8 @@ Data lives in `data/games.db` (SQLite). Delete it to start over.
 The server binds to `127.0.0.1` — it's reachable only from your own machine. There is no
 authentication, and the API can both read and write your stored API keys, so only set
 `HOST=0.0.0.0` (to reach the app from a phone or another PC) on a network you trust.
+
+The key fields under **Settings → API keys** are masked, with a **Show** button on each. That's
+cover for whoever is stood behind you and nothing more — the API still hands a preview of every key
+to anything that can reach the port, so the localhost binding above is what's actually protecting
+them. Your SteamID is left visible on purpose: it's the number in your own profile URL.

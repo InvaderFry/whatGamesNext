@@ -309,8 +309,16 @@ function buildWhere(filters: GameFilters): { clause: string; params: Record<stri
     params.status = filters.status;
   }
   if (filters.search) {
-    where.push("title LIKE @search");
-    params.search = `%${filters.search}%`;
+    // SQLite gives LIKE no escape character unless one is declared, so a % or _
+    // typed into the search box was a wildcard rather than a character: "%" on
+    // its own matched the entire library. Parameterized either way, so this was
+    // never an injection — just a surprise for a title that needs one, and
+    // "100%" and "Half-Life 2: Episode _" are both real names.
+    //
+    // All three characters go in one pass. Escaping the backslash separately
+    // would then re-escape the backslashes the other two just added.
+    where.push("title LIKE @search ESCAPE '\\'");
+    params.search = `%${filters.search.replace(/[\\%_]/g, "\\$&")}%`;
   }
   if (filters.maxLength != null) {
     where.push("hltb_main <= @maxLength");
