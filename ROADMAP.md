@@ -3,8 +3,8 @@
 Handoff notes for whatever picks this up next. Everything here comes out of a feature review of the
 whole codebase; the items already built are listed at the bottom for context.
 
-**Branch:** `claude/whatgamesnext-review-assessment-v408hr`.
-**Suite:** 268 tests — 181 server, 87 web. CI runs `npm test`, `npm run typecheck`, `npm run lint`,
+**Branch:** `claude/roadmap-items-e8hb10`.
+**Suite:** 296 tests — 201 server, 95 web. CI runs `npm test`, `npm run typecheck`, `npm run lint`,
 `npm run format:check`; all four should stay green.
 
 ---
@@ -57,6 +57,11 @@ Worth reading before writing anything, so new work doesn't look bolted on.
 Ranked by what I'd do next. Export/import used to sit at #2 here and was done first: it protects the
 only data in the app that can't be re-derived, and it was verifiable end to end in a sandbox that
 can't reach Steam.
+
+With R19–R22 done, the only cheap item left anywhere in this file is **cancelling a running
+enrichment**, at the bottom. Everything above needs a data source this sandbox can't reach, so
+whoever takes #1 should expect to build it against fixtures and leave it unconfirmed against real
+Steam — which is an argument for doing the cancel flag first, not an argument against #1.
 
 ### 1. Steam achievements + recently-played
 
@@ -157,6 +162,10 @@ For context on what's been touched, and so nothing gets built twice.
 | R16 | Quick wins checks the rating its own subtitle promises            | `7744609`            |
 | R17 | Restore normalizes hand-written titles; backup version guard      | `d035fa0`            |
 | R18 | Narrow-screen layout — the app fits a 390px phone                 | `ef438c3`            |
+| R19 | Bounded numeric query params on `/api/recommend` and `/api/games` | `b6c5325`            |
+| R20 | Library responses can no longer land out of order                 | `74b46fb`            |
+| R21 | `%` and `_` in the search box are characters, not wildcards       | `92a28b1`            |
+| R22 | API keys masked, with a per-field reveal toggle                   | `128e9ac`, `c7ac599` |
 
 Things shipped with known, deliberate limits, in case they look like oversights:
 
@@ -172,25 +181,26 @@ Things shipped with known, deliberate limits, in case they look like oversights:
   restores nothing and says so. That's deliberate — the alternative is inventing rows for titles
   with no store, no ratings and no lengths behind them.
 
-### Left open from the R15–R18 pass
+### What the R19–R22 pass settled
 
-An external feature review turned these up. All four are real, all four are cheap, none of them
-were worth their own risk alongside the correctness fixes:
+The four items an external review left open are done. Notes worth keeping, because each one landed
+somewhere slightly different from where the roadmap pointed:
 
-- **Unbounded numeric query params.** `/api/recommend` takes `budget`, `limit`, `maxDifficulty` and
-  the five `w_*` weights straight from the query string through `Number()`, so `limit=99999`
-  serializes the whole library and a negative weight inverts the ranking. Harmless on a
-  single-user localhost app with no adversary, but a small `boundedNumber(value, {min, max,
-fallback})` helper in `routes/recommend.ts` would close all eight at once.
-- **Library requests can land out of order.** `load()` in `web/src/pages/Library.tsx` has no
-  `AbortController` and no sequence guard, so a slow response for an old filter can overwrite a
-  newer one. The 300ms search debounce hides most of it and the window is tiny over loopback.
-- **`LIKE` wildcards aren't escaped.** `lib/library.ts:312` interpolates the search term into
-  `title LIKE @search`, so a `%` or `_` typed into the box acts as a wildcard. Parameterized, so
-  not an injection — just a surprise if a title ever needs one.
-- **API keys are plain text inputs** (`pages/Settings.tsx`). A password input with a reveal toggle
-  is a one-word change, though it's cosmetic: `GET /api/settings` returns a preview of each key to
-  anyone who can reach the port anyway, which is what the localhost binding is really protecting.
+- **`boundedNumber` lives in `lib/params.ts`, not in `routes/recommend.ts`.** `/api/games` had the
+  identical unbounded `limit` and `offset` one file over, so the helper is shared. It **clamps
+  rather than 400s** — a slider that overshoots should still return games. Omitting `limit` on
+  `/api/games` still returns everything; that path isn't caller-controlled.
+- **R20 needed both guards, not either.** Aborting stops the server work and the stale parse, but
+  can't unwind a response that resolved just before the abort landed — that microtask is queued and
+  will run. Hence the sequence number as well. Anything else that grows a `load()` should copy
+  both, and remember to swallow the `AbortError` or every change flashes a red banner.
+- **R22 is cosmetic and the code says so.** `GET /api/settings` still returns a key preview to
+  anything that can reach the port; the `127.0.0.1` binding is the real protection. The SteamID is
+  deliberately left unmasked — it's in your public profile URL.
+- **R22 also cost two screenshot-only bugs**, both introduced and fixed in the same pass: "Show" is
+  7px wider than "Hide", so the toggle moved the input it acts on, and the row with no toggle ran
+  its input 79px further right. A reserved width fixes both, dropped below 640px where the input
+  needs the room more than the rows need to line up. The suite was green through every version.
 
 And one thing found while fixing R17, left alone deliberately:
 
