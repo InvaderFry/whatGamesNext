@@ -184,8 +184,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  games: (params: URLSearchParams) =>
-    request<{ count: number; games: Game[] }>(`/api/games?${params}`),
+  /** The signal is how the Library drops a request whose filters are already stale. */
+  games: (params: URLSearchParams, signal?: AbortSignal) =>
+    request<{ count: number; games: Game[] }>(`/api/games?${params}`, { signal }),
   facets: () => request<Facets>("/api/games/facets"),
   patchGame: (
     id: number,

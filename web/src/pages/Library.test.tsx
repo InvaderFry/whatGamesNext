@@ -171,6 +171,55 @@ describe("Library", () => {
     await waitFor(() => expect(window.location.search).toBe("?search=hade"));
   });
 
+  it("keeps the newest filter's games when an older request resolves last", async () => {
+    const user = userEvent.setup();
+    // Two deferred responses, resolved out of order: the first filter's answer
+    // comes back after the second's, which is what used to win the grid.
+    const deferred: ((value: { count: number; games: ReturnType<typeof makeGame>[] }) => void)[] =
+      [];
+    games.mockImplementation(
+      () => new Promise((resolve) => deferred.push(resolve)) as ReturnType<typeof api.games>,
+    );
+    render(<Library />);
+
+    await user.selectOptions(screen.getByLabelText("Filter by status"), "finished");
+    await waitFor(() => expect(deferred.length).toBe(2));
+
+    deferred[1]({ count: 1, games: [makeGame({ id: 2, title: "Celeste" })] });
+    deferred[0]({ count: 1, games: [makeGame({ id: 1, title: "Hades" })] });
+
+    expect(await screen.findByText("Celeste")).toBeInTheDocument();
+    expect(screen.queryByText("Hades")).not.toBeInTheDocument();
+  });
+
+  it("aborts the request it just replaced", async () => {
+    const user = userEvent.setup();
+    render(<Library />);
+    await screen.findByText("Hades");
+
+    await user.selectOptions(screen.getByLabelText("Filter by status"), "finished");
+    // Each call is handed a signal, and the one from the superseded call is spent.
+    const [, firstSignal] = games.mock.calls[0];
+    expect(firstSignal?.aborted).toBe(true);
+    expect(games.mock.calls.at(-1)![1]?.aborted).toBe(false);
+  });
+
+  it("doesn't report a request it cancelled as an error", async () => {
+    games.mockRejectedValue(new DOMException("The user aborted a request.", "AbortError"));
+    render(<Library />);
+
+    await waitFor(() => expect(games).toHaveBeenCalled());
+    // The skeleton stays up; what must not happen is a red banner blaming the
+    // server for a request the page threw away itself.
+    await waitFor(() => expect(document.querySelector(".notice.error")).not.toBeInTheDocument());
+  });
+
+  it("still surfaces a real failure", async () => {
+    games.mockRejectedValue(new Error("500 Internal Server Error"));
+    render(<Library />);
+    expect(await screen.findByText("500 Internal Server Error")).toBeInTheDocument();
+  });
+
   it("debounces the search box into a single request", async () => {
     const user = userEvent.setup();
     render(<Library />);
