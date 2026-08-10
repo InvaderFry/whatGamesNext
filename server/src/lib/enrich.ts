@@ -21,6 +21,8 @@ export interface EnrichProgress {
   lastError: string | null;
   /** True after several consecutive HLTB errors — the scraper is likely broken or blocked. */
   hltbUnavailable: boolean;
+  /** True after several consecutive RAWG errors — an expired key, a rate limit, or an outage. */
+  rawgUnavailable: boolean;
   /** Seconds left, from the rate actually achieved so far. Null until a game finishes. */
   etaSeconds: number | null;
 }
@@ -41,6 +43,16 @@ export interface InterruptedRun {
 const HLTB_UNAVAILABLE_AFTER = 3;
 let hltbConsecutiveErrors = 0;
 
+/**
+ * Same circuit breaker for RAWG, and the same threshold. The failure that
+ * matters is systemic rather than per-game — an expired key, a spent daily
+ * quota, an outage — and all three answer identically for every title in the
+ * library. Three in a row is enough to stop spending a second each on the
+ * remaining fifteen hundred.
+ */
+const RAWG_UNAVAILABLE_AFTER = 3;
+let rawgConsecutiveErrors = 0;
+
 /** Games enriched at once. Each one makes up to three calls, to three
  *  different hosts, so the work is almost entirely waiting on the network. */
 const CONCURRENCY = 3;
@@ -56,6 +68,7 @@ const progress = {
   current: null as string | null,
   lastError: null as string | null,
   hltbUnavailable: false,
+  rawgUnavailable: false,
 };
 
 let startedAtMs: number | null = null;
@@ -148,7 +161,9 @@ export function startEnrichment(): { started: boolean } {
   progress.failed = 0;
   progress.lastError = null;
   progress.hltbUnavailable = false;
+  progress.rawgUnavailable = false;
   hltbConsecutiveErrors = 0;
+  rawgConsecutiveErrors = 0;
   startedAtMs = Date.now();
   // A fresh run shouldn't inherit the tail of the last one's pacing.
   for (const limiter of Object.values(limiters)) limiter.reset();
@@ -205,9 +220,30 @@ async function enrichOne(game: GameRow) {
   // key later backfills it — 'done' would strand it, since only failures requeue.
   const hasRawgKey = !!getSetting("rawg_api_key");
   let rawg = null;
+  // A RAWG lookup has three outcomes, and only two of them mean we're finished
+  // with this game. `lookupRawg` returns null when it searched and found no
+  // confident match — that answer won't improve on a retry, so it counts as
+  // done. It *throws* for an expired key, a spent quota or an outage, which
+  // says nothing about the game at all. Flattening the throw to null and
+  // marking the row 'done' is how a bad key used to silently walk the whole
+  // library, write nothing, and report a clean run.
+  let rawgFailed = false;
   if (hasRawgKey) {
-    await limiters.rawg.take();
-    rawg = await lookupRawg(game.title).catch(() => null);
+    if (progress.rawgUnavailable) {
+      // The breaker is open. Skip the call, but the game is still unfinished.
+      rawgFailed = true;
+    } else {
+      await limiters.rawg.take();
+      try {
+        rawg = await lookupRawg(game.title);
+        rawgConsecutiveErrors = 0;
+      } catch (err) {
+        rawgFailed = true;
+        rawgConsecutiveErrors++;
+        if (rawgConsecutiveErrors >= RAWG_UNAVAILABLE_AFTER) progress.rawgUnavailable = true;
+        progress.lastError = `${game.title}: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    }
   }
 
   // HLTB is unofficial and flaky — missing lengths are acceptable, but flag
@@ -253,7 +289,12 @@ async function enrichOne(game: GameRow) {
       enrich_status = @status, enrich_error = NULL
     WHERE id = @id`,
   ).run({
-    status: hasRawgKey ? "done" : "pending",
+    // Left pending when RAWG couldn't answer, for the same reason a missing key
+    // does: the next run picks it up on its own, with no button to find. HLTB
+    // and Steam reviews deliberately don't gate this — both are keyless
+    // best-effort extras, and holding every game pending on a flaky scraper
+    // would mean a library that never finishes enriching.
+    status: hasRawgKey && !rawgFailed ? "done" : "pending",
     id: game.id,
     rawgId: rawg?.rawgId ?? null,
     metacritic: rawg?.metacritic ?? null,

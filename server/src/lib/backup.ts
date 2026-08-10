@@ -1,5 +1,6 @@
 import { getDb, type GameRow, type Store } from "../db.js";
 import { findExistingGame } from "./library.js";
+import { normalizeTitle } from "./match.js";
 import { compactQueue } from "./queue.js";
 import { splitCsvLine, splitCsvRecords, toCsvLine } from "./import.js";
 
@@ -177,6 +178,14 @@ export function parseBackup(text: string): Backup {
     }
     const body = parsed as Partial<Backup>;
     if (!Array.isArray(body.games)) fail("a backup needs a `games` array");
+    // Refusing beats guessing. A newer file may carry columns this build would
+    // drop on the floor, and a restore that silently loses half your notes is
+    // worse than one that declines and tells you why.
+    if (typeof body.version === "number" && body.version > BACKUP_VERSION) {
+      fail(
+        `this backup is version ${body.version}, but this version of whatGamesNext only understands version ${BACKUP_VERSION} — update the app first`,
+      );
+    }
     return {
       version: typeof body.version === "number" ? body.version : BACKUP_VERSION,
       exportedAt: typeof body.exportedAt === "string" ? body.exportedAt : "",
@@ -216,7 +225,12 @@ export function importBackup(backup: Backup): RestoreSummary {
   db.transaction(() => {
     for (const entry of backup.games) {
       const match = findExistingGame({
-        normalizedTitle: entry.normalized_title || entry.title.toLowerCase(),
+        // The same normalizer the library was built with. Lowercasing alone
+        // isn't it: `normalized_title` has had punctuation folded, roman
+        // numerals mapped and edition suffixes stripped, so a hand-written
+        // "Control: Ultimate Edition" would never match the "Control" row it
+        // obviously means.
+        normalizedTitle: entry.normalized_title || normalizeTitle(entry.title),
         steamAppid: entry.steam_appid,
         epicAppName: entry.epic_app_name,
       });

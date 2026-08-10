@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { setDbForTests, getDb, type GameRow } from "../db.js";
 import { exportBackup, importBackup, parseBackup, toCsv } from "./backup.js";
+import { normalizeTitle } from "./match.js";
 
 beforeEach(() => {
   setDbForTests(new Database(":memory:"));
@@ -221,5 +222,31 @@ describe("parseBackup", () => {
       personal_rating: 9,
       hidden: 1,
     });
+  });
+
+  it("refuses a backup written by a newer version", () => {
+    const backup = { version: 99, games: [{ title: "Hades" }] };
+    expect(() => parseBackup(JSON.stringify(backup))).toThrow(/version 99.*update the app/);
+  });
+});
+
+describe("matching a hand-written title", () => {
+  it("normalizes the title the same way the library did", () => {
+    // Seeded through the real normalizer, as a sync would.
+    const title = "Control";
+    getDb()
+      .prepare(
+        "INSERT INTO games (title, normalized_title, store, notes) VALUES (?, ?, 'steam', NULL)",
+      )
+      .run(title, normalizeTitle(title));
+
+    // Typed out by hand, with the edition suffix the store puts on it. Plain
+    // lowercasing leaves "control: ultimate edition" and finds nothing.
+    const summary = importBackup(
+      parseBackup('title,notes\n"Control: Ultimate Edition","still my favourite"'),
+    );
+
+    expect(summary.notFound).toEqual([]);
+    expect(rowFor(title).notes).toBe("still my favourite");
   });
 });

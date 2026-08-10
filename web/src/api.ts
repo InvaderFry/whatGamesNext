@@ -108,6 +108,7 @@ export interface SyncStatus {
     current: string | null;
     lastError: string | null;
     hltbUnavailable: boolean;
+    rawgUnavailable: boolean;
     etaSeconds: number | null;
   };
   lastRun: { finishedAt: string; total: number; done: number; failed: number } | null;

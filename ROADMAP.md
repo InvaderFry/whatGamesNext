@@ -3,8 +3,8 @@
 Handoff notes for whatever picks this up next. Everything here comes out of a feature review of the
 whole codebase; the items already built are listed at the bottom for context.
 
-**Branch:** `claude/roadmap-review-plan-919s30`.
-**Suite:** 257 tests — 174 server, 83 web. CI runs `npm test`, `npm run typecheck`, `npm run lint`,
+**Branch:** `claude/whatgamesnext-review-assessment-v408hr`.
+**Suite:** 268 tests — 181 server, 87 web. CI runs `npm test`, `npm run typecheck`, `npm run lint`,
 `npm run format:check`; all four should stay green.
 
 ---
@@ -102,11 +102,13 @@ much bigger feature and depends on their profile being public.
 exposes compatibility categories through an unofficial endpoint; same fail-soft treatment as HLTB,
 and it slots into enrichment alongside the other per-game lookups.
 
-### 6. PWA + mobile layout
+### 6. PWA
 
-Deciding what to play from the couch. The CSS is already flexbox/grid with custom properties and a
-light/dark theme, so the groundwork is there. Real work is the card grid at narrow widths and the
-Shortlist row layout, which currently assumes a wide row. A manifest and service worker on top.
+Deciding what to play from the couch. The layout half is done (R18): there's a `max-width: 640px`
+block at the bottom of `web/src/styles.css`, the header wraps, the nav scrolls sideways and the
+Shortlist stacks, all verified at 390px in Chromium. What's left is the PWA proper — a manifest, a
+service worker, an install prompt, and offline access to the last synced library — plus the
+couch-sized rethink of the controls, which is a design job rather than a CSS one.
 
 ### 7. Weekly digest
 
@@ -151,6 +153,10 @@ For context on what's been touched, and so nothing gets built twice.
 | F5  | Learned taste from your own history                               | `683d0db`            |
 | R6  | Match on a store id first, so two DOOMs stay two rows             | `911a001`            |
 | F4  | Backup/restore of everything you authored (JSON + CSV)            | `39b8559`            |
+| R15 | A failed RAWG lookup no longer marks a game enriched              | `93ac818`            |
+| R16 | Quick wins checks the rating its own subtitle promises            | `7744609`            |
+| R17 | Restore normalizes hand-written titles; backup version guard      | `d035fa0`            |
+| R18 | Narrow-screen layout — the app fits a 390px phone                 | `ef438c3`            |
 
 Things shipped with known, deliberate limits, in case they look like oversights:
 
@@ -166,7 +172,37 @@ Things shipped with known, deliberate limits, in case they look like oversights:
   restores nothing and says so. That's deliberate — the alternative is inventing rows for titles
   with no store, no ratings and no lengths behind them.
 
-Two small things noticed while working and left open:
+### Left open from the R15–R18 pass
+
+An external feature review turned these up. All four are real, all four are cheap, none of them
+were worth their own risk alongside the correctness fixes:
+
+- **Unbounded numeric query params.** `/api/recommend` takes `budget`, `limit`, `maxDifficulty` and
+  the five `w_*` weights straight from the query string through `Number()`, so `limit=99999`
+  serializes the whole library and a negative weight inverts the ranking. Harmless on a
+  single-user localhost app with no adversary, but a small `boundedNumber(value, {min, max,
+fallback})` helper in `routes/recommend.ts` would close all eight at once.
+- **Library requests can land out of order.** `load()` in `web/src/pages/Library.tsx` has no
+  `AbortController` and no sequence guard, so a slow response for an old filter can overwrite a
+  newer one. The 300ms search debounce hides most of it and the window is tiny over loopback.
+- **`LIKE` wildcards aren't escaped.** `lib/library.ts:312` interpolates the search term into
+  `title LIKE @search`, so a `%` or `_` typed into the box acts as a wildcard. Parameterized, so
+  not an injection — just a surprise if a title ever needs one.
+- **API keys are plain text inputs** (`pages/Settings.tsx`). A password input with a reveal toggle
+  is a one-word change, though it's cosmetic: `GET /api/settings` returns a preview of each key to
+  anyone who can reach the port anyway, which is what the localhost binding is really protecting.
+
+And one thing found while fixing R17, left alone deliberately:
+
+- **`normalizeTitle` leaves a bare "edition" behind on "GOTY Edition".** `BARE_EDITIONS` strips
+  `goty` on its own, and nothing then removes the orphaned `edition`, so
+  `"Wild Hunt - GOTY Edition"` normalizes to `wild hunt edition` while
+  `"... - Game of the Year Edition"` correctly gives `wild hunt`. Worth fixing, but
+  `normalized_title` is the key rows are matched on: changing the function changes which games
+  merge, so it wants a migration plan and a careful look at existing libraries rather than a
+  one-line regex tweak.
+
+Two small things noticed earlier and still open:
 
 - **`.btn` was scoped to `button`**, so the first pass at the download links rendered as bare text.
   Fixed by broadening the selector, but it's the sort of thing only a screenshot catches — the

@@ -57,7 +57,6 @@ export default function Settings() {
   const [importStore, setImportStore] = useState("gog");
   const [justAdded, setJustAdded] = useState<number | null>(null);
   const [merged, setMerged] = useState<MergeNote[]>([]);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const offerRef = useRef<HTMLDivElement | null>(null);
   const restoreRef = useRef<HTMLInputElement | null>(null);
 
@@ -66,10 +65,6 @@ export default function Settings() {
       const [s, cfg] = await Promise.all([api.syncStatus(), api.settings()]);
       setStatus(s);
       setSettings(cfg);
-      if (!s.enrichment.running && pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -77,14 +72,19 @@ export default function Settings() {
 
   useEffect(() => {
     void refresh();
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
   }, [refresh]);
 
-  function startPolling() {
-    if (!pollRef.current) pollRef.current = setInterval(() => void refresh(), 2000);
-  }
+  // Enrichment is a long server-side run that outlives the page, so what drives
+  // the poll is the server saying it's running — not the click that started it.
+  // Started from another tab, or reloaded halfway through, this picks it up on
+  // the first status response either way. It used to hang off the buttons, and
+  // a reload mid-run left the progress bar frozen on one snapshot.
+  const running = status?.enrichment.running ?? false;
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => void refresh(), 2000);
+    return () => clearInterval(id);
+  }, [running, refresh]);
 
   /** Returns the result, or undefined if the call failed. */
   async function run<T>(
@@ -213,7 +213,6 @@ export default function Settings() {
               onClick={() => {
                 setJustAdded(null);
                 void run("enrich", api.startEnrich, () => "Enrichment started.");
-                startPolling();
               }}
             >
               Enrich {pending} game{pending === 1 ? "" : "s"} now
@@ -458,7 +457,6 @@ export default function Settings() {
             disabled={busy !== null || enrich?.running}
             onClick={() => {
               void run("enrich", api.startEnrich, () => "Enrichment started.");
-              startPolling();
             }}
           >
             {enrich?.running ? "Enriching…" : "Start enrichment"}
@@ -473,7 +471,6 @@ export default function Settings() {
                   api.retryFailedEnrich,
                   (r: { requeued: number }) => `Requeued ${r.requeued} failed games.`,
                 );
-                startPolling();
               }}
             >
               Retry {lib.enrich_failed} failed
@@ -490,7 +487,6 @@ export default function Settings() {
                   api.refreshEnrich,
                   (r: { requeued: number }) => `Refreshing data for ${r.requeued} games.`,
                 );
-                startPolling();
               }}
             >
               Refresh game data
@@ -528,6 +524,13 @@ export default function Settings() {
               />
             </div>
           </>
+        )}
+        {enrich?.rawgUnavailable && (
+          <p className="hint status-warn">
+            RAWG keeps returning errors — check that your API key is still valid and that you
+            haven't hit its daily quota. Ratings are being skipped, and the games are left pending
+            so a later run picks them up.
+          </p>
         )}
         {enrich?.hltbUnavailable && (
           <p className="hint status-warn">

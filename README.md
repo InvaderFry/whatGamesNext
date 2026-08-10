@@ -109,7 +109,9 @@ a `.env` file (`cp .env.example .env`) — the Settings values win when both are
    parallel — roughly a game a second overall, or ~25 minutes for 1,500 games. A progress bar and
    time estimate show while it runs.
    It's resumable: results are saved per game, so an interrupted run picks up where it stopped and
-   already-enriched games are skipped.
+   already-enriched games are skipped. A game whose RAWG lookup failed — an expired key, a spent
+   daily quota, an outage — stays pending rather than counting as enriched, so the next run
+   retries it on its own. If it keeps failing, Settings says so instead of reporting a clean run.
 3. Go to **What next?** and pick a mode.
 
 ### Backup and restore

@@ -122,6 +122,15 @@ export interface RecommendOptions {
   taste?: TasteProfile;
 }
 
+/**
+ * The floor for Quick Wins. Deliberately lower than backlog-shame's 80: that
+ * mode is about games you *should* be embarrassed to have skipped, while this
+ * one only needs to keep out the ones you'd regret the evening on. 70 is also
+ * where Metacritic's own green band starts, which is the scale most of these
+ * ratings arrive on.
+ */
+const QUICK_WIN_MIN_RATING = 70;
+
 interface Scored {
   game: GameRow;
   score: number;
@@ -174,11 +183,22 @@ export function recommend(
         })
         .sort((a, b) => b.score - a.score);
 
+    // "Short and highly rated" is the promise, so a game already known to be
+    // poorly reviewed doesn't belong here however short it is. An *unrated*
+    // game does: without a RAWG key almost nothing has a rating, and a hard
+    // floor would empty the mode entirely. Unknowns score 40 below, which sinks
+    // them beneath anything rated without pretending to know they're bad.
     case "quick-wins":
       return pool
-        .filter(
-          (g) => g.hltb_main != null && g.hltb_main <= (budget ?? 12) && g.playtime_minutes < 120,
-        )
+        .filter((g) => {
+          const rating = effectiveRating(g);
+          return (
+            (rating == null || rating >= QUICK_WIN_MIN_RATING) &&
+            g.hltb_main != null &&
+            g.hltb_main <= (budget ?? 12) &&
+            g.playtime_minutes < 120
+          );
+        })
         .map((g) => {
           const rating = effectiveRating(g) ?? 40;
           return {

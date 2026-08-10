@@ -47,6 +47,7 @@ function status(
       current: null,
       lastError: null,
       hltbUnavailable: false,
+      rawgUnavailable: false,
       etaSeconds: null,
       ...rest.enrichment,
     },
@@ -154,6 +155,7 @@ describe("Settings", () => {
             current: "Hades",
             lastError: null,
             hltbUnavailable: false,
+            rawgUnavailable: false,
             etaSeconds: 900,
           },
         },
@@ -162,6 +164,83 @@ describe("Settings", () => {
     render(<Settings />);
     expect(await screen.findByText(/currently: Hades/)).toBeInTheDocument();
     expect(screen.getByText(/about 15 min left/)).toBeInTheDocument();
+  });
+
+  it("keeps polling a run that was already going when the page loaded", async () => {
+    vi.useFakeTimers();
+    try {
+      // No click starts this one — the run began before the page did, which is
+      // what a reload mid-enrichment looks like.
+      syncStatus.mockResolvedValue(
+        status(
+          {},
+          {
+            enrichment: {
+              running: true,
+              total: 100,
+              done: 40,
+              failed: 0,
+              current: "Hades",
+              lastError: null,
+              hltbUnavailable: false,
+              rawgUnavailable: false,
+              etaSeconds: 900,
+            },
+          },
+        ),
+      );
+      render(<Settings />);
+      await vi.waitFor(() => expect(syncStatus).toHaveBeenCalledTimes(1));
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(syncStatus).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(syncStatus).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops polling once the run finishes", async () => {
+    vi.useFakeTimers();
+    try {
+      syncStatus.mockResolvedValue(
+        status(
+          {},
+          {
+            enrichment: {
+              running: true,
+              total: 100,
+              done: 40,
+              failed: 0,
+              current: "Hades",
+              lastError: null,
+              hltbUnavailable: false,
+              rawgUnavailable: false,
+              etaSeconds: 900,
+            },
+          },
+        ),
+      );
+      render(<Settings />);
+      await vi.waitFor(() => expect(syncStatus).toHaveBeenCalledTimes(1));
+
+      syncStatus.mockResolvedValue(status());
+      await vi.advanceTimersByTimeAsync(2000);
+      const settled = syncStatus.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(10000);
+      expect(syncStatus).toHaveBeenCalledTimes(settled);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("warns when RAWG keeps failing, so a dead key isn't mistaken for a clean run", async () => {
+    syncStatus.mockResolvedValue(
+      status({}, { enrichment: { rawgUnavailable: true } as SyncStatus["enrichment"] }),
+    );
+    render(<Settings />);
+    expect(await screen.findByText(/RAWG keeps returning errors/)).toBeInTheDocument();
   });
 
   it("explains an interrupted run instead of just showing nothing", async () => {
