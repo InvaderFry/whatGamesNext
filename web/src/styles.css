@@ -664,3 +664,76 @@ button.btn:disabled {
   font-size: 13px;
   text-align: right;
 }
+
+/* Narrow screens.
+   Deciding what to play happens on a phone at least as often as at a desk, and
+   until now nothing in this file mentioned width: the header alone needs about
+   620px for its title and five nav buttons, so it simply ran off the side of a
+   390px screen. The card grid already reflows on its own (auto-fill, 260px
+   minimum) and the toolbar already wraps — what follows is the rest.
+
+   This is the layout fix, not the phone feature. An installable PWA with
+   couch-sized controls is still its own job. */
+@media (max-width: 640px) {
+  .app-header {
+    /* The title takes the first line, the nav drops onto the second, rather
+       than the two fighting over one. */
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding: 12px 16px;
+  }
+  .nav {
+    /* Five buttons still don't fit side by side on the narrowest phones, and a
+       wrapped nav pushes the content down a whole row. Scroll it sideways
+       instead, with the tap targets kept full size. */
+    width: 100%;
+    overflow-x: auto;
+    /* No scrollbar gutter eating into a 40px-tall strip. */
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+  .nav button {
+    white-space: nowrap;
+  }
+
+  main {
+    padding: 16px 16px 48px;
+  }
+
+  /* 200px plus a select or two overflows the line, and the search box is the
+     one control that should take the width it can get. */
+  input[type="text"] {
+    min-width: 0;
+    flex: 1 1 160px;
+  }
+
+  /* The API-key rows are a label wrapping its own caption and input. A flex
+     item's automatic minimum size is its content's, so the label refuses to go
+     below the input's default ~250px and carries the whole card off-screen —
+     relaxing the input alone isn't enough, the label has to be allowed to
+     shrink too. */
+  .settings-card .row > label {
+    min-width: 0;
+  }
+
+  /* The restore picker's intrinsic width is ~250px, which becomes its automatic
+     minimum size as a flex item and carries the card off-screen. max-width
+     can't override that; only an explicit min-width can. */
+  input[type="file"] {
+    min-width: 0;
+  }
+
+  /* The shortlist row assumes space for a column of buttons beside the card.
+     Below this width the card needs the whole row, so the controls go under
+     it and lie flat. */
+  .queue li {
+    flex-direction: column;
+  }
+  .queue-controls {
+    flex-direction: row;
+    align-items: center;
+    padding-top: 0;
+  }
+}
