@@ -137,7 +137,58 @@ describe("startEnrichment", () => {
     expect(g.metacritic).toBe(93);
     expect(g.hltb_main).toBe(21);
     expect(g.steam_review_pct).toBe(98);
-    expect(g.enrich_status).toBe("done");
+  });
+
+  it("leaves a game pending when RAWG errors, rather than calling it done", async () => {
+    settings.set("rawg_api_key", "expired");
+    seed([{ title: "Hades", steam_appid: 1145360 }]);
+    lookupRawg.mockRejectedValue(new Error("RAWG API error 401"));
+    lookupHltb.mockResolvedValue({ main: 21, extra: 44, completionist: 96 });
+    fetchReviewSummary.mockResolvedValue({ reviewPct: 98, reviewCount: 250000 });
+
+    await runQueue();
+
+    const g = row("Hades");
+    // The whole point: a dead key must not look like a finished game, or the
+    // rating never gets fetched again without someone finding Refresh all.
+    expect(g.enrich_status).toBe("pending");
+    expect(g.metacritic).toBeNull();
+    // The keyless sources still ran and their data was kept.
+    expect(g.hltb_main).toBe(21);
+    expect(g.steam_review_pct).toBe(98);
+    expect(getEnrichProgress().lastError).toContain("401");
+  });
+
+  it("marks a game done when RAWG has simply never heard of it", async () => {
+    settings.set("rawg_api_key", "key");
+    seed([{ title: "Some Itch Jam Game" }]);
+    // null is a searched-and-found-nothing answer, not a failure. Retrying it
+    // forever would mean a library that can never finish enriching.
+    lookupRawg.mockResolvedValue(null);
+
+    await runQueue();
+
+    expect(row("Some Itch Jam Game").enrich_status).toBe("done");
+    expect(getEnrichProgress().rawgUnavailable).toBe(false);
+  });
+
+  it("stops calling RAWG once it has failed enough times in a row", async () => {
+    settings.set("rawg_api_key", "expired");
+    const titles = Array.from({ length: 12 }, (_, i) => `Game ${i}`);
+    seed(titles.map((title) => ({ title })));
+    lookupRawg.mockRejectedValue(new Error("RAWG API error 401"));
+
+    await runQueue();
+
+    expect(getEnrichProgress().rawgUnavailable).toBe(true);
+    // Not an exact count: three games are in flight at once, so a couple more
+    // calls are already committed by the time the third failure trips the
+    // breaker. What matters is that it stops well short of the whole library.
+    expect(lookupRawg.mock.calls.length).toBeLessThan(titles.length);
+    // Every game stays pending, including the ones the breaker skipped outright.
+    for (const title of titles) {
+      expect(row(title).enrich_status).toBe("pending");
+    }
   });
 
   it("records a failure without stopping the rest of the queue", async () => {
