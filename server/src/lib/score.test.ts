@@ -119,6 +119,27 @@ describe("recommend", () => {
     expect(results.every((r) => r.game.playtime_minutes < 120)).toBe(true);
   });
 
+  it("quick-wins drops a short game already known to be badly rated", () => {
+    const panned = game({
+      id: 7,
+      title: "Short And Panned",
+      metacritic: 41,
+      playtime_minutes: 0,
+      hltb_main: 3,
+    });
+    const ids = recommend([...library, panned], "quick-wins", { budgetHours: 12 }).map(
+      (r) => r.game.id,
+    );
+    // Short is not enough — the mode promises "highly rated" too.
+    expect(ids).not.toContain(7);
+  });
+
+  it("quick-wins keeps unrated games, since an unenriched library has nothing else", () => {
+    const unrated = game({ id: 8, title: "No Rating Yet", playtime_minutes: 0, hltb_main: 4 });
+    const results = recommend([unrated], "quick-wins", { budgetHours: 12 });
+    expect(results.map((r) => r.game.id)).toEqual([8]);
+  });
+
   it("hidden-gems requires high review pct and modest review counts", () => {
     const ids = recommend(library, "hidden-gems").map((r) => r.game.id);
     expect(ids).toEqual([3]);
