@@ -116,6 +116,25 @@ describe("GET /api/games", () => {
     expect(res.body.games.map((g: { title: string }) => g.title)).toEqual(["Game 3", "Game 2"]);
   });
 
+  it("searches for a literal % rather than treating it as a wildcard", async () => {
+    seed([{ title: "100% Orange Juice" }, { title: "Portal 2" }, { title: "Hollow Knight" }]);
+    const res = await request(app).get("/api/games?search=%25");
+    expect(res.body.games.map((g: { title: string }) => g.title)).toEqual(["100% Orange Juice"]);
+  });
+
+  it("searches for a literal _ rather than matching any character", async () => {
+    seed([{ title: "100% Orange Juice" }, { title: "Portal 2" }, { title: "Hollow Knight" }]);
+    // Unescaped, "_" is "any one character" and matches all three.
+    const res = await request(app).get("/api/games?search=_");
+    expect(res.body.games).toEqual([]);
+  });
+
+  it("keeps matching an ordinary search term case-insensitively", async () => {
+    seed([{ title: "Portal 2" }, { title: "Hollow Knight" }]);
+    const res = await request(app).get("/api/games?search=PORTAL");
+    expect(res.body.games.map((g: { title: string }) => g.title)).toEqual(["Portal 2"]);
+  });
+
   it("clamps a huge page size so one request can't serialize the library", async () => {
     seed(Array.from({ length: 210 }, (_, i) => ({ title: `Game ${i}` })));
     const res = await request(app).get("/api/games?limit=99999");
