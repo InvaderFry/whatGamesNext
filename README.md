@@ -81,7 +81,7 @@ listed after the sync, in case one of them was really two different games.
 
 ## Setup
 
-Requires Node 20+.
+Requires Node 20 through 26 — the range the native SQLite driver ships builds for.
 
 ```bash
 npm install
