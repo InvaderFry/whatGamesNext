@@ -96,6 +96,24 @@ describe("GET /api/games", () => {
     expect(all.body.count).toBe(2);
   });
 
+  it("ignores a filter it can't read instead of applying it", async () => {
+    // A hand-edited URL shouldn't quietly drop the games with no known length.
+    seed([{ title: "Known", hltb_main: 12 }, { title: "Unknown" }]);
+    for (const q of ["maxLength=Infinity", "maxLength=-Infinity", "maxLength=abc", "minRating="]) {
+      expect((await request(app).get(`/api/games?${q}`)).body.count).toBe(2);
+    }
+  });
+
+  it("clamps a filter that runs off the end of its scale", async () => {
+    seed([
+      { title: "Easy", difficulty: 2 },
+      { title: "Hard", difficulty: 5 },
+    ]);
+    const res = await request(app).get("/api/games?maxDifficulty=99");
+    expect(res.body.count).toBe(2);
+    expect((await request(app).get("/api/games?maxDifficulty=-5")).body.count).toBe(0);
+  });
+
   it("filters by status, genre, and search", async () => {
     seed([
       { title: "Celeste", status: "finished", genres: ["Platformer"] },
@@ -205,6 +223,17 @@ describe("PATCH /api/games/:id", () => {
     expect(cleared.status).toBe(200);
     expect(cleared.body.difficulty_override).toBeNull();
     expect(cleared.body.effective_difficulty).toBe(3);
+  });
+
+  it('takes only a real boolean for hidden, so "false" can\'t hide a game', async () => {
+    seed([{ title: "Hades" }]);
+    for (const hidden of ["false", 0, 1, null]) {
+      expect((await request(app).patch("/api/games/1").send({ hidden })).status).toBe(400);
+    }
+    expect((await request(app).get("/api/games")).body.count).toBe(1);
+    expect((await request(app).patch("/api/games/1").send({ hidden: true })).body.hidden).toBe(
+      true,
+    );
   });
 });
 
@@ -1005,5 +1034,31 @@ describe("backup and restore", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/`title` column/);
+  });
+
+  it("takes a backup too big for the app-wide body limit", async () => {
+    // The rest of the API parses under a 2mb limit, and a real library with a
+    // note on every game goes past that — which is the whole reason the restore
+    // route parses under its own 10mb one.
+    seed(Array.from({ length: 1100 }, (_, i) => ({ title: `Game ${i}` })));
+    getDb().exec(`UPDATE games SET status = 'finished', notes = '${"n".repeat(2000)}'`);
+    const text = JSON.stringify((await request(app).get("/api/export")).body);
+    expect(text.length).toBeGreaterThan(2 * 1024 * 1024);
+    getDb().exec("UPDATE games SET status = 'unplayed', notes = NULL");
+
+    const res = await request(app).post("/api/import").send({ text });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ restored: 1100, notFound: [] });
+  });
+
+  it("says a file past the restore limit is too large", async () => {
+    const res = await request(app)
+      .post("/api/import")
+      .set("Content-Type", "application/json")
+      .send(JSON.stringify({ text: "x".repeat(11 * 1024 * 1024) }));
+
+    expect(res.status).toBe(413);
+    expect(res.body.error).toMatch(/too large/);
   });
 });

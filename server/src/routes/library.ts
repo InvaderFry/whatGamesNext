@@ -21,6 +21,16 @@ const LIMIT_BOUNDS = { min: 1, max: 200, fallback: null };
  */
 const OFFSET_BOUNDS = { min: 0, max: 1_000_000, fallback: null };
 
+/**
+ * Filter ceilings, in the units the columns hold: `hltb_main` is hours, and no
+ * game is a thousand of them; `difficulty` is 1-5; and `minRating` is compared
+ * against a 0-100 score. Like `limit` and `offset`, an out-of-range value
+ * clamps rather than 400s — a bookmarked URL should still return games.
+ */
+const LENGTH_BOUNDS = { min: 0, max: 1000, fallback: null };
+const DIFFICULTY_BOUNDS = { min: 1, max: 5, fallback: null };
+const RATING_BOUNDS = { min: 0, max: 100, fallback: null };
+
 const SORT_KEYS: SortKey[] = [
   "title",
   "rating",
@@ -45,18 +55,16 @@ function toApi(g: GameRow) {
 
 libraryRouter.get("/games", (req, res) => {
   const q = req.query;
-  const num = (v: unknown) =>
-    v != null && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : undefined;
   const filters: GameFilters = {
     store: typeof q.store === "string" ? q.store : undefined,
     status: typeof q.status === "string" ? q.status : undefined,
     genre: typeof q.genre === "string" ? q.genre : undefined,
     tag: typeof q.tag === "string" ? q.tag : undefined,
     search: typeof q.search === "string" ? q.search : undefined,
-    maxLength: num(q.maxLength),
-    minLength: num(q.minLength),
-    maxDifficulty: num(q.maxDifficulty),
-    minRating: num(q.minRating),
+    maxLength: boundedNumber(q.maxLength, LENGTH_BOUNDS) ?? undefined,
+    minLength: boundedNumber(q.minLength, LENGTH_BOUNDS) ?? undefined,
+    maxDifficulty: boundedNumber(q.maxDifficulty, DIFFICULTY_BOUNDS) ?? undefined,
+    minRating: boundedNumber(q.minRating, RATING_BOUNDS) ?? undefined,
     includeHidden: q.includeHidden === "1",
   };
   const sort = SORT_KEYS.includes(q.sort as SortKey) ? (q.sort as SortKey) : "title";
@@ -120,6 +128,11 @@ libraryRouter.patch("/games/:id", (req, res) => {
     }
   }
   if (body.hidden !== undefined) {
+    // Without this, any truthy value hides a game — including the string
+    // "false", which a hand-written client is more likely to send than not.
+    if (typeof body.hidden !== "boolean") {
+      return res.status(400).json({ error: "hidden must be true or false" });
+    }
     sets.push("hidden = @hidden");
     params.hidden = body.hidden ? 1 : 0;
   }
