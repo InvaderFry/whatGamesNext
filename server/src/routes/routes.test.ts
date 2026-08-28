@@ -96,6 +96,24 @@ describe("GET /api/games", () => {
     expect(all.body.count).toBe(2);
   });
 
+  it("ignores a filter it can't read instead of applying it", async () => {
+    // A hand-edited URL shouldn't quietly drop the games with no known length.
+    seed([{ title: "Known", hltb_main: 12 }, { title: "Unknown" }]);
+    for (const q of ["maxLength=Infinity", "maxLength=-Infinity", "maxLength=abc", "minRating="]) {
+      expect((await request(app).get(`/api/games?${q}`)).body.count).toBe(2);
+    }
+  });
+
+  it("clamps a filter that runs off the end of its scale", async () => {
+    seed([
+      { title: "Easy", difficulty: 2 },
+      { title: "Hard", difficulty: 5 },
+    ]);
+    const res = await request(app).get("/api/games?maxDifficulty=99");
+    expect(res.body.count).toBe(2);
+    expect((await request(app).get("/api/games?maxDifficulty=-5")).body.count).toBe(0);
+  });
+
   it("filters by status, genre, and search", async () => {
     seed([
       { title: "Celeste", status: "finished", genres: ["Platformer"] },
@@ -205,6 +223,17 @@ describe("PATCH /api/games/:id", () => {
     expect(cleared.status).toBe(200);
     expect(cleared.body.difficulty_override).toBeNull();
     expect(cleared.body.effective_difficulty).toBe(3);
+  });
+
+  it('takes only a real boolean for hidden, so "false" can\'t hide a game', async () => {
+    seed([{ title: "Hades" }]);
+    for (const hidden of ["false", 0, 1, null]) {
+      expect((await request(app).patch("/api/games/1").send({ hidden })).status).toBe(400);
+    }
+    expect((await request(app).get("/api/games")).body.count).toBe(1);
+    expect((await request(app).patch("/api/games/1").send({ hidden: true })).body.hidden).toBe(
+      true,
+    );
   });
 });
 
