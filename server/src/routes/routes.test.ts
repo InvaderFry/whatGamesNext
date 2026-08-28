@@ -1006,4 +1006,30 @@ describe("backup and restore", () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/`title` column/);
   });
+
+  it("takes a backup too big for the app-wide body limit", async () => {
+    // The rest of the API parses under a 2mb limit, and a real library with a
+    // note on every game goes past that — which is the whole reason the restore
+    // route parses under its own 10mb one.
+    seed(Array.from({ length: 1100 }, (_, i) => ({ title: `Game ${i}` })));
+    getDb().exec(`UPDATE games SET status = 'finished', notes = '${"n".repeat(2000)}'`);
+    const text = JSON.stringify((await request(app).get("/api/export")).body);
+    expect(text.length).toBeGreaterThan(2 * 1024 * 1024);
+    getDb().exec("UPDATE games SET status = 'unplayed', notes = NULL");
+
+    const res = await request(app).post("/api/import").send({ text });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ restored: 1100, notFound: [] });
+  });
+
+  it("says a file past the restore limit is too large", async () => {
+    const res = await request(app)
+      .post("/api/import")
+      .set("Content-Type", "application/json")
+      .send(JSON.stringify({ text: "x".repeat(11 * 1024 * 1024) }));
+
+    expect(res.status).toBe(413);
+    expect(res.body.error).toMatch(/too large/);
+  });
 });

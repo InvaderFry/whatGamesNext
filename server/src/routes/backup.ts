@@ -1,14 +1,10 @@
-import express, { Router } from "express";
+import { Router } from "express";
 import { exportBackup, importBackup, parseBackup, toCsv } from "../lib/backup.js";
 
+// A restore body is a whole backup file in one field, so it parses under a
+// larger limit than the rest of the API. That parser lives in `app.ts` — it
+// only works ahead of the app-wide one, which a router-level parser can't be.
 export const backupRouter = Router();
-
-/**
- * A restore body is one field holding a whole file. The app-wide limit is 2mb,
- * and a large library whose games carry notes goes past that, so this router
- * gets its own.
- */
-backupRouter.use(express.json({ limit: "10mb" }));
 
 backupRouter.get("/export", (req, res) => {
   const backup = exportBackup();
