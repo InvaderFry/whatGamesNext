@@ -173,6 +173,77 @@ describe("lookupHltb", () => {
     }
   });
 
+  it("makes a lookup whose token was revoked by another's 429 wait out the cooldown", async () => {
+    vi.useFakeTimers();
+    try {
+      // A and B both send token-1. A's search hits the limit; B's comes back
+      // 403 a moment later because the 429 revoked the token they shared.
+      let releaseB!: () => void;
+      const bResponse = new Promise<Response>((resolve) => {
+        releaseB = () => resolve(new Response("forbidden", { status: 403 }));
+      });
+      let staleSeen = 0;
+      route((_, init) => {
+        const token = (init?.headers as Record<string, string>)["x-auth-token"];
+        if (token !== "token-1") return Response.json(HADES_HIT);
+        staleSeen++;
+        return staleSeen === 1
+          ? Response.json({ error: "Too many requests" }, { status: 429 })
+          : bResponse;
+      });
+
+      const a = lookupHltb("Hades");
+      const b = lookupHltb("Hades");
+      await vi.advanceTimersByTimeAsync(0);
+      releaseB();
+      await vi.advanceTimersByTimeAsync(RATE_LIMIT_COOLDOWN_MS / 2);
+      // B must not spend its one retry while the limit is still in force.
+      expect(searches()).toHaveLength(2);
+
+      await vi.advanceTimersByTimeAsync(RATE_LIMIT_COOLDOWN_MS);
+      expect((await a)?.main).toBe(23.6);
+      expect((await b)?.main).toBe(23.6);
+      expect(searches()).toHaveLength(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps waiting when another 429 extends the cooldown", async () => {
+    vi.useFakeTimers();
+    try {
+      // A and B both send token-1. A is limited straight away; B's 429 arrives
+      // 10s later and pushes the cooldown out to 40s. A must not wake at 30s.
+      let releaseB!: () => void;
+      const bResponse = new Promise<Response>((resolve) => {
+        releaseB = () => resolve(Response.json({ error: "Too many requests" }, { status: 429 }));
+      });
+      let staleSeen = 0;
+      route((_, init) => {
+        const token = (init?.headers as Record<string, string>)["x-auth-token"];
+        if (token !== "token-1") return Response.json(HADES_HIT);
+        staleSeen++;
+        return staleSeen === 1
+          ? Response.json({ error: "Too many requests" }, { status: 429 })
+          : bResponse;
+      });
+
+      const a = lookupHltb("Hades");
+      const b = lookupHltb("Hades");
+      await vi.advanceTimersByTimeAsync(10_000);
+      releaseB();
+      await vi.advanceTimersByTimeAsync(RATE_LIMIT_COOLDOWN_MS - 5_000); // t = 35s
+      expect(searches()).toHaveLength(2);
+
+      await vi.advanceTimersByTimeAsync(5_000); // t = 40s
+      expect((await a)?.main).toBe(23.6);
+      expect((await b)?.main).toBe(23.6);
+      expect(searches()).toHaveLength(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("says it was rate limited when the retry is limited too", async () => {
     vi.useFakeTimers();
     try {

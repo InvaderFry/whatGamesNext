@@ -58,9 +58,15 @@ export function resetHltbTokenForTests(): void {
   cooldownUntil = 0;
 }
 
+/**
+ * Wait until no cooldown is in force. The deadline is read again after every
+ * wake: another lookup's 429 can push it further out while this one sleeps,
+ * and waking at the old deadline would retry straight into the limit.
+ */
 async function waitForCooldown(): Promise<void> {
-  const wait = cooldownUntil - Date.now();
-  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  for (let wait = cooldownUntil - Date.now(); wait > 0; wait = cooldownUntil - Date.now()) {
+    await new Promise((r) => setTimeout(r, wait));
+  }
 }
 
 async function fetchToken(): Promise<string> {
@@ -146,29 +152,36 @@ async function search(token: string, title: string): Promise<Response> {
   });
 }
 
-export async function lookupHltb(title: string): Promise<HltbData | null> {
+/**
+ * One search attempt, first try or retry alike: wait out any cooldown, *then*
+ * take the current token and search. Fetching the token after the wait matters
+ * too — a token requested mid-cooldown would only be refused.
+ */
+async function attempt(title: string): Promise<{ token: string; res: Response }> {
   await waitForCooldown();
-  let token = await getToken();
-  let res = await search(token, title);
-  if (res.status === 429) {
-    // Rate limited. The token is dead now too, so drop it, hold every lookup
-    // back until the limit has cleared, and retry once with a fresh token.
+  const token = await getToken();
+  return { token, res: await search(token, title) };
+}
+
+function startCooldown(): void {
+  cooldownUntil = Math.max(cooldownUntil, Date.now() + RATE_LIMIT_COOLDOWN_MS);
+}
+
+export async function lookupHltb(title: string): Promise<HltbData | null> {
+  let { token, res } = await attempt(title);
+  if (res.status === 429 || res.status === 403) {
+    // 429: rate limited, and the token is dead now too. 403: the token expired
+    // or was revoked — possibly by another lookup's 429, in which case the
+    // cooldown is already running and attempt() waits it out. Either way, drop
+    // the token (unless another lookup already replaced it) and retry once.
+    if (res.status === 429) startCooldown();
     discardToken(token);
-    cooldownUntil = Math.max(cooldownUntil, Date.now() + RATE_LIMIT_COOLDOWN_MS);
-    await waitForCooldown();
-    token = await getToken();
-    res = await search(token, title);
-  } else if (res.status === 403) {
-    // Expired or rejected token — get a fresh one and retry once, as the site
-    // does. If another lookup already replaced it, this reuses that one.
-    discardToken(token);
-    token = await getToken();
-    res = await search(token, title);
+    ({ token, res } = await attempt(title));
   }
   if (!res.ok) {
     if (res.status === 403 || res.status === 429) discardToken(token);
     if (res.status === 429) {
-      cooldownUntil = Math.max(cooldownUntil, Date.now() + RATE_LIMIT_COOLDOWN_MS);
+      startCooldown();
       throw new Error("HLTB search 429 — rate limited (too many searches a minute)");
     }
     throw new Error(`HLTB search ${res.status}`);
