@@ -1,11 +1,32 @@
 import { bestMatch } from "../lib/match.js";
 
 /**
- * HowLongToBeat has no official API. Its site queries POST /api/seek/<token>,
- * where the token is embedded in the site's bundled JS. We extract the token
- * once per process and cache it; a stale token is re-derived and the search
- * retried once. If HLTB changes their bundle format this fails soft (games
- * simply keep null lengths).
+ * HowLongToBeat has no official API, so this talks to the same endpoints its
+ * own search page does. Expect it to break whenever HLTB rebuilds the site;
+ * enrichment treats it as best effort, and games simply keep null lengths.
+ *
+ * How the site's search works (as of November 2026):
+ *   1. GET /api/search/site/init returns { token }. The token is signed and
+ *      bound to the caller's IP and User-Agent, so both requests must go out
+ *      with the same User-Agent. The request needs a Referer, or it's a 403.
+ *   2. POST /api/search/site with the token in an `x-auth-token` header.
+ *      An expired token comes back 403; the site fetches a new one and retries
+ *      once, and so does this.
+ *   3. Searches are limited to about 60 a minute per IP. The 61st comes back
+ *      429 {"error":"Too many requests"} with no Retry-After header, and the
+ *      token that hit it is dead from then on — every later search with it is
+ *      a 403, however long you wait. A fresh token works again once the limit
+ *      clears. Measured November 2026: the first 429 came after 60 searches
+ *      whether they took 26 seconds or 63, and a fresh token worked 5 seconds
+ *      later. So enrichment paces HLTB well under the limit (lib/enrich.ts),
+ *      and a 429 here pauses every lookup, drops the token and retries once.
+ *
+ * The previous version scraped a token out of the site's `pages/_app` JS
+ * bundle and POSTed to /api/seek/<token>. HLTB moved to a new bundler and that
+ * file no longer exists, which is what made every lookup fail with "Could not
+ * locate HLTB search endpoint token". If lookups start failing again, open
+ * howlongtobeat.com in a browser, search for a game, and compare the request
+ * the page makes (devtools → Network) with what's built here.
  */
 
 export interface HltbData {
@@ -18,36 +39,64 @@ const HLTB = "https://howlongtobeat.com";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36";
 
-/** Pure parsers, exported for tests — the part most likely to break when HLTB changes their build. */
-export function extractAppScriptPaths(html: string): string[] {
-  return [...html.matchAll(/src="(\/_next\/static\/chunks\/pages\/_app-[^"]+\.js)"/g)].map(
-    ([, src]) => src,
-  );
+/**
+ * How long to back off after a 429. The limit is per minute; a fresh token
+ * worked again after 5 seconds when measured, so half a minute is a generous
+ * margin without stalling a long run for long.
+ */
+export const RATE_LIMIT_COOLDOWN_MS = 30_000;
+
+let cachedToken: string | null = null;
+let pendingToken: Promise<string> | null = null;
+/** No search goes out before this time — set by a 429, shared by every lookup. */
+let cooldownUntil = 0;
+
+/** For tests. */
+export function resetHltbTokenForTests(): void {
+  cachedToken = null;
+  pendingToken = null;
+  cooldownUntil = 0;
 }
 
-// Matches fetch("/api/<name>/".concat("a").concat("b") style token assembly.
-export function extractSeekPath(js: string): string | null {
-  const m = js.match(/\/api\/(\w+)\/"(?:\.concat\("([^"]*)"\))(?:\.concat\("([^"]*)"\))?/);
-  if (!m) return null;
-  return `/api/${m[1]}/${m[2] ?? ""}${m[3] ?? ""}`;
-}
-
-let cachedEndpoint: string | null = null;
-
-async function findSeekEndpoint(): Promise<string> {
-  if (cachedEndpoint) return cachedEndpoint;
-  const home = await fetch(HLTB, { headers: { "User-Agent": UA } });
-  if (!home.ok) throw new Error(`HLTB homepage ${home.status}`);
-  const html = await home.text();
-  for (const src of extractAppScriptPaths(html)) {
-    const js = await (await fetch(HLTB + src, { headers: { "User-Agent": UA } })).text();
-    const path = extractSeekPath(js);
-    if (path) {
-      cachedEndpoint = HLTB + path;
-      return cachedEndpoint;
-    }
+/**
+ * Wait until no cooldown is in force. The deadline is read again after every
+ * wake: another lookup's 429 can push it further out while this one sleeps,
+ * and waking at the old deadline would retry straight into the limit.
+ */
+async function waitForCooldown(): Promise<void> {
+  for (let wait = cooldownUntil - Date.now(); wait > 0; wait = cooldownUntil - Date.now()) {
+    await new Promise((r) => setTimeout(r, wait));
   }
-  throw new Error("Could not locate HLTB search endpoint token");
+}
+
+async function fetchToken(): Promise<string> {
+  const res = await fetch(`${HLTB}/api/search/site/init?t=${Date.now()}`, {
+    headers: { "User-Agent": UA, Referer: `${HLTB}/` },
+  });
+  if (!res.ok) throw new Error(`HLTB search init ${res.status}`);
+  const body = (await res.json()) as { token?: string };
+  if (!body.token) throw new Error("HLTB search init returned no token");
+  cachedToken = body.token;
+  return body.token;
+}
+
+/**
+ * Forget a token HLTB rejected — but only if it's still the cached one.
+ * Lookups run concurrently and can all send the same expired token. The first
+ * 403 back gets a fresh token; a slower 403 for the old token that lands
+ * afterwards must not throw the fresh one away and log in again for nothing.
+ */
+function discardToken(rejected: string): void {
+  if (cachedToken === rejected) cachedToken = null;
+}
+
+/** One token for every lookup until it's rejected; concurrent callers share one init. */
+async function getToken(): Promise<string> {
+  if (cachedToken) return cachedToken;
+  pendingToken ??= fetchToken().finally(() => {
+    pendingToken = null;
+  });
+  return pendingToken;
 }
 
 interface HltbSearchEntry {
@@ -58,52 +107,84 @@ interface HltbSearchEntry {
   comp_100: number;
 }
 
-async function seek(endpoint: string, title: string): Promise<Response> {
-  return fetch(endpoint, {
+/** The site sends every filter as an include-list; empty means "any". */
+const ANY = { mode: "include", values: [] };
+
+/** The request body the site's own search page sends, with its filters left at "any". */
+export function searchBody(title: string) {
+  return {
+    searchType: "games",
+    searchTerms: title.trim().split(/\s+/),
+    searchPage: 1,
+    size: 5,
+    searchOptions: {
+      games: {
+        userId: 0,
+        platform: ANY,
+        sortCategory: "popular",
+        rangeCategory: "main",
+        rangeTime: { min: null, max: null },
+        gameplay: { perspective: ANY, flow: ANY, genre: ANY },
+        year: ANY,
+        modifier: "",
+      },
+      users: { sortCategory: "postcount" },
+      lists: { sortCategory: "follows" },
+      filter: "",
+      sort: 0,
+      randomizer: 0,
+    },
+    useCache: true,
+  };
+}
+
+async function search(token: string, title: string): Promise<Response> {
+  return fetch(`${HLTB}/api/search/site`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "User-Agent": UA,
-      Referer: HLTB + "/",
+      Referer: `${HLTB}/`,
       Origin: HLTB,
+      "x-auth-token": token,
     },
-    body: JSON.stringify({
-      searchType: "games",
-      searchTerms: title.split(/\s+/),
-      searchPage: 1,
-      size: 5,
-      searchOptions: {
-        games: {
-          userId: 0,
-          platform: "",
-          sortCategory: "popular",
-          rangeCategory: "main",
-          rangeTime: { min: null, max: null },
-          gameplay: { perspective: "", flow: "", genre: "", difficulty: "" },
-          rangeYear: { min: "", max: "" },
-          modifier: "",
-        },
-        users: { sortCategory: "postcount" },
-        lists: { sortCategory: "follows" },
-        filter: "",
-        sort: 0,
-        randomizer: 0,
-      },
-      useCache: true,
-    }),
+    body: JSON.stringify(searchBody(title)),
   });
 }
 
+/**
+ * One search attempt, first try or retry alike: wait out any cooldown, *then*
+ * take the current token and search. Fetching the token after the wait matters
+ * too — a token requested mid-cooldown would only be refused.
+ */
+async function attempt(title: string): Promise<{ token: string; res: Response }> {
+  await waitForCooldown();
+  const token = await getToken();
+  return { token, res: await search(token, title) };
+}
+
+function startCooldown(): void {
+  cooldownUntil = Math.max(cooldownUntil, Date.now() + RATE_LIMIT_COOLDOWN_MS);
+}
+
 export async function lookupHltb(title: string): Promise<HltbData | null> {
-  let res = await seek(await findSeekEndpoint(), title);
+  let { token, res } = await attempt(title);
+  if (res.status === 429 || res.status === 403) {
+    // 429: rate limited, and the token is dead now too. 403: the token expired
+    // or was revoked — possibly by another lookup's 429, in which case the
+    // cooldown is already running and attempt() waits it out. Either way, drop
+    // the token (unless another lookup already replaced it) and retry once.
+    if (res.status === 429) startCooldown();
+    discardToken(token);
+    ({ token, res } = await attempt(title));
+  }
   if (!res.ok) {
-    // A stale token typically returns 404 — re-derive it and retry once.
-    cachedEndpoint = null;
-    res = await seek(await findSeekEndpoint(), title);
-    if (!res.ok) {
-      cachedEndpoint = null;
-      throw new Error(`HLTB search ${res.status}`);
+    if (res.status === 403 || res.status === 429) discardToken(token);
+    if (res.status === 429) {
+      startCooldown();
+      throw new Error("HLTB search 429 — rate limited (too many searches a minute)");
     }
+    throw new Error(`HLTB search ${res.status}`);
   }
   const body = (await res.json()) as { data?: HltbSearchEntry[] };
   const results = body.data ?? [];

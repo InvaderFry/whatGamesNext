@@ -110,6 +110,8 @@ export interface SyncStatus {
     current: string | null;
     lastError: string | null;
     hltbUnavailable: boolean;
+    /** Why HLTB lookups are failing, when they are. */
+    hltbError: string | null;
     igdbUnavailable: boolean;
     rawgUnavailable: boolean;
     etaSeconds: number | null;

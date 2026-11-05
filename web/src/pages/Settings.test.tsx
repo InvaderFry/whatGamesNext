@@ -49,6 +49,7 @@ function status(
       current: null,
       lastError: null,
       hltbUnavailable: false,
+      hltbError: null,
       igdbUnavailable: false,
       rawgUnavailable: false,
       etaSeconds: null,
@@ -212,6 +213,7 @@ describe("Settings", () => {
             current: "Hades",
             lastError: null,
             hltbUnavailable: false,
+            hltbError: null,
             igdbUnavailable: false,
             rawgUnavailable: false,
             etaSeconds: 900,
@@ -241,6 +243,7 @@ describe("Settings", () => {
               current: "Hades",
               lastError: null,
               hltbUnavailable: false,
+              hltbError: null,
               igdbUnavailable: false,
               rawgUnavailable: false,
               etaSeconds: 900,
@@ -275,6 +278,7 @@ describe("Settings", () => {
               current: "Hades",
               lastError: null,
               hltbUnavailable: false,
+              hltbError: null,
               igdbUnavailable: false,
               rawgUnavailable: false,
               etaSeconds: 900,
@@ -303,6 +307,42 @@ describe("Settings", () => {
     expect(
       await screen.findByText(/RAWG \(the backup source\) keeps returning errors/),
     ).toBeInTheDocument();
+  });
+
+  it("says why HowLongToBeat is failing, and that a rate limit just needs a wait", async () => {
+    syncStatus.mockResolvedValue(
+      status(
+        {},
+        {
+          enrichment: {
+            hltbUnavailable: true,
+            hltbError: "HLTB search 429 — rate limited (too many searches a minute)",
+          } as SyncStatus["enrichment"],
+        },
+      ),
+    );
+    render(<Settings />);
+    const warning = await screen.findByText(/HowLongToBeat lookups keep failing/);
+    expect(warning).toHaveTextContent(/last error: HLTB search 429/);
+    expect(warning).toHaveTextContent(/wait a minute/);
+  });
+
+  it("points at a site change when HowLongToBeat fails some other way", async () => {
+    syncStatus.mockResolvedValue(
+      status(
+        {},
+        {
+          enrichment: {
+            hltbUnavailable: true,
+            hltbError: "HLTB search init 403",
+          } as SyncStatus["enrichment"],
+        },
+      ),
+    );
+    render(<Settings />);
+    expect(await screen.findByText(/HowLongToBeat lookups keep failing/)).toHaveTextContent(
+      /change to its site/,
+    );
   });
 
   it("warns when IGDB keeps failing, and points at the credentials", async () => {

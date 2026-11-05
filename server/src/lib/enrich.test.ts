@@ -245,6 +245,8 @@ describe("startEnrichment", () => {
     await runQueue();
 
     expect(getEnrichProgress().hltbUnavailable).toBe(true);
+    // The reason is kept, so the UI can say more than "unreachable".
+    expect(getEnrichProgress().hltbError).toBe("HLTB search 403");
     expect(lookupHltb).toHaveBeenCalledTimes(3);
     // A dead length source must not fail the games themselves.
     expect(row("E").enrich_status).toBe("done");
