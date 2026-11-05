@@ -15,7 +15,7 @@ const HADES_HIT = {
   ],
 };
 
-type Handler = (url: string, init?: RequestInit) => Response;
+type Handler = (url: string, init?: RequestInit) => Response | Promise<Response>;
 
 let fetchMock: ReturnType<typeof vi.fn>;
 let tokensIssued: number;
@@ -84,6 +84,35 @@ describe("lookupHltb", () => {
     expect((await lookupHltb("Hades"))?.main).toBe(23.6);
     expect(tokensIssued).toBe(2);
     expect(searches()).toHaveLength(2);
+  });
+
+  it("doesn't throw away a refreshed token when a stale 403 arrives late", async () => {
+    // Two lookups send the same expired token. One 403 comes back at once and
+    // that lookup refreshes; the other's 403 is slow and lands afterwards. It
+    // must not discard the fresh token and log in again.
+    let releaseLate!: () => void;
+    const late = new Promise<Response>((resolve) => {
+      releaseLate = () => resolve(new Response("forbidden", { status: 403 }));
+    });
+    let staleSeen = 0;
+    route((_, init) => {
+      const token = (init?.headers as Record<string, string>)["x-auth-token"];
+      if (token !== "token-1") return Response.json(HADES_HIT);
+      staleSeen++;
+      return staleSeen === 1 ? new Response("forbidden", { status: 403 }) : late;
+    });
+
+    const fast = lookupHltb("Hades");
+    const slow = lookupHltb("Hades");
+    expect((await fast)?.main).toBe(23.6);
+    expect(tokensIssued).toBe(2);
+
+    releaseLate();
+    expect((await slow)?.main).toBe(23.6);
+    // The slow lookup retried with token-2 instead of fetching a token-3.
+    expect(tokensIssued).toBe(2);
+    const [, slowRetry] = searches().at(-1)!;
+    expect(slowRetry.headers["x-auth-token"]).toBe("token-2");
   });
 
   it("throws when the retry is rejected too, so the breaker can count it", async () => {

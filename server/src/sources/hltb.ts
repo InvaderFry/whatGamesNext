@@ -74,6 +74,16 @@ async function fetchToken(): Promise<string> {
   return body.token;
 }
 
+/**
+ * Forget a token HLTB rejected — but only if it's still the cached one.
+ * Lookups run concurrently and can all send the same expired token. The first
+ * 403 back gets a fresh token; a slower 403 for the old token that lands
+ * afterwards must not throw the fresh one away and log in again for nothing.
+ */
+function discardToken(rejected: string): void {
+  if (cachedToken === rejected) cachedToken = null;
+}
+
 /** One token for every lookup until it's rejected; concurrent callers share one init. */
 async function getToken(): Promise<string> {
   if (cachedToken) return cachedToken;
@@ -138,21 +148,25 @@ async function search(token: string, title: string): Promise<Response> {
 
 export async function lookupHltb(title: string): Promise<HltbData | null> {
   await waitForCooldown();
-  let res = await search(await getToken(), title);
+  let token = await getToken();
+  let res = await search(token, title);
   if (res.status === 429) {
     // Rate limited. The token is dead now too, so drop it, hold every lookup
     // back until the limit has cleared, and retry once with a fresh token.
-    cachedToken = null;
+    discardToken(token);
     cooldownUntil = Math.max(cooldownUntil, Date.now() + RATE_LIMIT_COOLDOWN_MS);
     await waitForCooldown();
-    res = await search(await getToken(), title);
+    token = await getToken();
+    res = await search(token, title);
   } else if (res.status === 403) {
-    // Expired or rejected token — get a fresh one and retry once, as the site does.
-    cachedToken = null;
-    res = await search(await getToken(), title);
+    // Expired or rejected token — get a fresh one and retry once, as the site
+    // does. If another lookup already replaced it, this reuses that one.
+    discardToken(token);
+    token = await getToken();
+    res = await search(token, title);
   }
   if (!res.ok) {
-    if (res.status === 403 || res.status === 429) cachedToken = null;
+    if (res.status === 403 || res.status === 429) discardToken(token);
     if (res.status === 429) {
       cooldownUntil = Math.max(cooldownUntil, Date.now() + RATE_LIMIT_COOLDOWN_MS);
       throw new Error("HLTB search 429 — rate limited (too many searches a minute)");
