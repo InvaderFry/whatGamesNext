@@ -20,7 +20,7 @@ export const recommendRouter = Router();
  */
 
 /**
- * The time-budget slider runs 2–100 hours. Nothing on HowLongToBeat has a main
+ * The time-budget slider runs 0.5–100 hours. Nothing on HowLongToBeat has a main
  * story anywhere near 1,000 hours, so past that the length-fit score can't move
  * — the cap is only here to keep the value finite and the sort meaningful.
  * `lengthFitScore` already reads 0 as "no budget", the same as null, so a zero

@@ -57,6 +57,22 @@ describe("Recommend", () => {
     expect(params.get("budget")).toBeNull();
   });
 
+  it("lets the budget go down to half an hour and one hour", async () => {
+    render(<Recommend />);
+    await screen.findByText("Hades");
+    const slider = screen.getByLabelText("Time budget");
+
+    fireEvent.change(slider, { target: { value: "0" } });
+    await waitFor(() => expect(recommend.mock.calls.at(-1)![0].get("budget")).toBe("0.5"));
+    expect(screen.getByText("30m")).toBeInTheDocument();
+
+    fireEvent.change(slider, { target: { value: "1" } });
+    await waitFor(() => expect(recommend.mock.calls.at(-1)![0].get("budget")).toBe("1"));
+
+    fireEvent.change(slider, { target: { value: "2" } });
+    await waitFor(() => expect(recommend.mock.calls.at(-1)![0].get("budget")).toBe("2"));
+  });
+
   it("shows the empty state when nothing matches", async () => {
     recommend.mockResolvedValue({ mode: "play-next", count: 0, total: 0, results: [] });
     render(<Recommend />);
