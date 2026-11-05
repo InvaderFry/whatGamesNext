@@ -63,9 +63,22 @@ const SETTING_FIELDS: SettingField[] = [
     secret: false,
   },
   {
+    key: "igdb_client_id",
+    label: "IGDB Client ID",
+    help: "From a free app at dev.twitch.tv/console — see the README for the steps",
+    secret: true,
+  },
+  {
+    key: "igdb_client_secret",
+    label: "IGDB Client Secret",
+    help: "Same Twitch app: Manage → New Secret",
+    secret: true,
+  },
+  {
+    // Backup source, likely to be deprecated — see server/src/sources/rawg.ts.
     key: "rawg_api_key",
     label: "RAWG API key",
-    help: "Free at rawg.io/apidocs — used for ratings",
+    help: "Optional backup — only used when IGDB can't answer, and RAWG is often down",
     secret: true,
   },
 ];
@@ -485,17 +498,24 @@ export default function Settings() {
       <div className="settings-card">
         <h3>Enrichment</h3>
         <p className="hint">
-          Fills in Metacritic/RAWG ratings, HowLongToBeat lengths, Steam review scores, and
-          estimated difficulty for every synced game. Rate-limited to be polite — a large library
-          takes a while, and you can close the tab and come back.{" "}
-          {!status?.config.rawgConfigured && (
+          Fills in ratings, genres and tags from IGDB, Metacritic and review scores from Steam (for
+          Epic and pasted games too, wherever IGDB can link them to Steam), HowLongToBeat lengths,
+          and estimated difficulty for every synced game. Rate-limited to be polite — a large
+          library takes a while, and you can close the tab and come back.{" "}
+          {status && !status.config.igdbConfigured && !status.config.rawgConfigured && (
             <span className="status-warn">
-              No RAWG API key set (free at{" "}
-              <a href="https://rawg.io/apidocs" target="_blank" rel="noreferrer">
-                rawg.io/apidocs
+              No IGDB credentials set (free — create an app at{" "}
+              <a href="https://dev.twitch.tv/console/apps" target="_blank" rel="noreferrer">
+                dev.twitch.tv/console
               </a>
-              , enter it under API keys above) — ratings will be skipped and games stay unenriched
-              so they can be completed once you add a key.
+              , then enter its Client ID and Secret under API keys above). Steam games still get
+              Steam's data, but games stay unenriched so they can be completed once you add them.
+            </span>
+          )}
+          {status && !status.config.igdbConfigured && status.config.rawgConfigured && (
+            <span className="status-warn">
+              Only the RAWG backup is set up, and RAWG is often down — add IGDB credentials under
+              API keys above for dependable ratings.
             </span>
           )}
         </p>
@@ -550,7 +570,7 @@ export default function Settings() {
         )}
         {!enrich?.running && status?.lastRun && (
           <p className="hint">
-            {/* "processed", not "enriched": a game with no RAWG key available is
+            {/* "processed", not "enriched": a game with no ratings source available is
                 worked through successfully but deliberately stays pending. */}
             Last run: {status.lastRun.done} game{status.lastRun.done === 1 ? "" : "s"} processed
             {status.lastRun.failed > 0 && `, ${status.lastRun.failed} failed`}, finished{" "}
@@ -573,11 +593,20 @@ export default function Settings() {
             </div>
           </>
         )}
+        {enrich?.igdbUnavailable && (
+          <p className="hint status-warn">
+            IGDB keeps returning errors — check the Client ID and Client Secret (a regenerated
+            secret replaces the old one). Games are left pending so a later run picks them up
+            {status?.config.rawgConfigured ? ", and RAWG is filling in where it can" : ""}.
+          </p>
+        )}
         {enrich?.rawgUnavailable && (
           <p className="hint status-warn">
-            RAWG keeps returning errors — check that your API key is still valid and that you
-            haven't hit its daily quota. Ratings are being skipped, and the games are left pending
-            so a later run picks them up.
+            RAWG (the backup source) keeps returning errors — it's often down, or the key may have
+            expired or hit its quota.{" "}
+            {status?.config.igdbConfigured
+              ? "IGDB is unaffected; RAWG is only skipped for games IGDB couldn't find."
+              : "Ratings are being skipped, and the games are left pending so a later run picks them up."}
           </p>
         )}
         {enrich?.hltbUnavailable && (

@@ -26,7 +26,9 @@ const restoreBackup = vi.mocked(api.restoreBackup);
 
 function status(
   overrides: Partial<SyncStatus["library"]> = {},
-  rest: Partial<Omit<SyncStatus, "library" | "config">> = {},
+  rest: Partial<Omit<SyncStatus, "library" | "config">> & {
+    config?: Partial<SyncStatus["config"]>;
+  } = {},
 ): SyncStatus {
   return {
     library: {
@@ -47,13 +49,20 @@ function status(
       current: null,
       lastError: null,
       hltbUnavailable: false,
+      igdbUnavailable: false,
       rawgUnavailable: false,
       etaSeconds: null,
       ...rest.enrichment,
     },
     lastRun: rest.lastRun ?? null,
     interrupted: rest.interrupted ?? null,
-    config: { steamConfigured: true, rawgConfigured: true, demo: false },
+    config: {
+      steamConfigured: true,
+      igdbConfigured: true,
+      rawgConfigured: true,
+      demo: false,
+      ...rest.config,
+    },
   };
 }
 
@@ -67,6 +76,8 @@ beforeEach(() => {
   vi.mocked(api.settings).mockResolvedValue({
     steam_api_key: { configured: true, source: "settings", preview: "…1234" },
     steam_id: { configured: true, source: "settings", preview: "…5678" },
+    igdb_client_id: { configured: true, source: "settings", preview: "…abcd" },
+    igdb_client_secret: { configured: true, source: "settings", preview: "…efgh" },
     rawg_api_key: { configured: true, source: "settings", preview: "…9012" },
   });
   syncSteam.mockResolvedValue({
@@ -201,6 +212,7 @@ describe("Settings", () => {
             current: "Hades",
             lastError: null,
             hltbUnavailable: false,
+            igdbUnavailable: false,
             rawgUnavailable: false,
             etaSeconds: 900,
           },
@@ -229,6 +241,7 @@ describe("Settings", () => {
               current: "Hades",
               lastError: null,
               hltbUnavailable: false,
+              igdbUnavailable: false,
               rawgUnavailable: false,
               etaSeconds: 900,
             },
@@ -262,6 +275,7 @@ describe("Settings", () => {
               current: "Hades",
               lastError: null,
               hltbUnavailable: false,
+              igdbUnavailable: false,
               rawgUnavailable: false,
               etaSeconds: 900,
             },
@@ -286,7 +300,33 @@ describe("Settings", () => {
       status({}, { enrichment: { rawgUnavailable: true } as SyncStatus["enrichment"] }),
     );
     render(<Settings />);
-    expect(await screen.findByText(/RAWG keeps returning errors/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/RAWG \(the backup source\) keeps returning errors/),
+    ).toBeInTheDocument();
+  });
+
+  it("warns when IGDB keeps failing, and points at the credentials", async () => {
+    syncStatus.mockResolvedValue(
+      status({}, { enrichment: { igdbUnavailable: true } as SyncStatus["enrichment"] }),
+    );
+    render(<Settings />);
+    expect(await screen.findByText(/IGDB keeps returning errors/)).toHaveTextContent(
+      /RAWG is filling in/,
+    );
+  });
+
+  it("says how to get IGDB credentials when no ratings source is set up", async () => {
+    syncStatus.mockResolvedValue(
+      status({}, { config: { igdbConfigured: false, rawgConfigured: false } }),
+    );
+    render(<Settings />);
+    expect(await screen.findByText(/No IGDB credentials set/)).toBeInTheDocument();
+  });
+
+  it("nudges toward IGDB when only the RAWG backup is set up", async () => {
+    syncStatus.mockResolvedValue(status({}, { config: { igdbConfigured: false } }));
+    render(<Settings />);
+    expect(await screen.findByText(/Only the RAWG backup is set up/)).toBeInTheDocument();
   });
 
   it("explains an interrupted run instead of just showing nothing", async () => {

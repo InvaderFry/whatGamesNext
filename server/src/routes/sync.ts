@@ -19,6 +19,7 @@ import {
 } from "../lib/enrich.js";
 import { env } from "../env.js";
 import { getSetting } from "../lib/settings.js";
+import { igdbConfigured } from "../sources/igdb.js";
 
 export const syncRouter = Router();
 
@@ -113,6 +114,8 @@ syncRouter.get("/sync/status", (_req, res) => {
     interrupted: getInterruptedRun(),
     config: {
       steamConfigured: !!(getSetting("steam_api_key") && getSetting("steam_id")),
+      igdbConfigured: igdbConfigured(),
+      // Backup source, likely to be deprecated — see sources/rawg.ts.
       rawgConfigured: !!getSetting("rawg_api_key"),
       demo: env.demo,
     },

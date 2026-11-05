@@ -43,6 +43,15 @@ describe("effectiveRating", () => {
     expect(effectiveRating(game({ steam_review_pct: 85 }))).toBe(85);
     expect(effectiveRating(game({}))).toBeNull();
   });
+
+  it("puts IGDB's critic average after Metacritic and its user rating last", () => {
+    expect(effectiveRating(game({ metacritic: 90, igdb_critic_rating: 70 }))).toBe(90);
+    expect(
+      effectiveRating(game({ igdb_critic_rating: 88, rawg_rating: 2, steam_review_pct: 50 })),
+    ).toBe(88);
+    expect(effectiveRating(game({ steam_review_pct: 85, igdb_user_rating: 60 }))).toBe(85);
+    expect(effectiveRating(game({ igdb_user_rating: 60 }))).toBe(60);
+  });
 });
 
 describe("compositeScore", () => {

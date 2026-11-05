@@ -32,9 +32,14 @@ export const DEFAULT_WEIGHTS: Weights = {
  */
 export function effectiveRating(g: GameRow): number | null {
   if (g.personal_rating != null) return g.personal_rating * 10; // stored 1–10
+  // Critics before players, as before: Metacritic, then IGDB's own critic
+  // average, which covers far more games than Metacritic does.
   if (g.metacritic != null) return g.metacritic;
+  if (g.igdb_critic_rating != null) return g.igdb_critic_rating;
   if (g.rawg_rating != null) return g.rawg_rating * 20; // RAWG is 0–5
+  // Steam's review share comes from a far bigger crowd than IGDB's members.
   if (g.steam_review_pct != null) return g.steam_review_pct;
+  if (g.igdb_user_rating != null) return g.igdb_user_rating;
   return null;
 }
 
@@ -185,7 +190,7 @@ export function recommend(
 
     // "Short and highly rated" is the promise, so a game already known to be
     // poorly reviewed doesn't belong here however short it is. An *unrated*
-    // game does: without a RAWG key almost nothing has a rating, and a hard
+    // game does: without IGDB or RAWG set up almost nothing has a rating, and a hard
     // floor would empty the mode entirely. Unknowns score 40 below, which sinks
     // them beneath anything rated without pretending to know they're bad.
     case "quick-wins":

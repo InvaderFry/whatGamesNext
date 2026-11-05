@@ -7,14 +7,28 @@ import { env } from "../env.js";
  * variables still work as a fallback when a setting is unset.
  */
 
-export const SETTING_KEYS = ["steam_api_key", "steam_id", "rawg_api_key"] as const;
+export const SETTING_KEYS = [
+  "steam_api_key",
+  "steam_id",
+  "igdb_client_id",
+  "igdb_client_secret",
+  // Backup source, likely to be deprecated — see sources/rawg.ts.
+  "rawg_api_key",
+] as const;
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
-const SECRET_KEYS: ReadonlySet<SettingKey> = new Set(["steam_api_key", "rawg_api_key"]);
+const SECRET_KEYS: ReadonlySet<SettingKey> = new Set([
+  "steam_api_key",
+  "igdb_client_id",
+  "igdb_client_secret",
+  "rawg_api_key",
+]);
 
 const ENV_FALLBACK: Record<SettingKey, () => string> = {
   steam_api_key: () => env.steamApiKey,
   steam_id: () => env.steamId,
+  igdb_client_id: () => env.igdbClientId,
+  igdb_client_secret: () => env.igdbClientSecret,
   rawg_api_key: () => env.rawgApiKey,
 };
 

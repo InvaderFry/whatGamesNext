@@ -272,9 +272,13 @@ export type SortKey =
   | "release"
   | "steam_reviews";
 
+/** The same fallback order as effectiveRating in score.ts, less the personal rating. */
+const RATING_SQL =
+  "COALESCE(metacritic, igdb_critic_rating, rawg_rating * 20, steam_review_pct, igdb_user_rating)";
+
 const SORT_SQL: Record<SortKey, string> = {
   title: "lower(title)",
-  rating: "COALESCE(metacritic, rawg_rating * 20, steam_review_pct)",
+  rating: RATING_SQL,
   metacritic: "metacritic",
   length: "hltb_main",
   difficulty: "COALESCE(difficulty_override, difficulty)",
@@ -333,7 +337,7 @@ function buildWhere(filters: GameFilters): { clause: string; params: Record<stri
     params.maxDifficulty = filters.maxDifficulty;
   }
   if (filters.minRating != null) {
-    where.push("COALESCE(metacritic, rawg_rating * 20, steam_review_pct) >= @minRating");
+    where.push(`${RATING_SQL} >= @minRating`);
     params.minRating = filters.minRating;
   }
 

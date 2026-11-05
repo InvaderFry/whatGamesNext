@@ -5,6 +5,8 @@ export interface Game {
   steam_appid: number | null;
   playtime_minutes: number;
   metacritic: number | null;
+  igdb_critic_rating: number | null;
+  igdb_user_rating: number | null;
   rawg_rating: number | null;
   steam_review_pct: number | null;
   steam_review_count: number | null;
@@ -108,6 +110,7 @@ export interface SyncStatus {
     current: string | null;
     lastError: string | null;
     hltbUnavailable: boolean;
+    igdbUnavailable: boolean;
     rawgUnavailable: boolean;
     etaSeconds: number | null;
   };
@@ -116,6 +119,7 @@ export interface SyncStatus {
   interrupted: { startedAt: string; total: number } | null;
   config: {
     steamConfigured: boolean;
+    igdbConfigured: boolean;
     rawgConfigured: boolean;
     demo: boolean;
   };
@@ -165,7 +169,10 @@ export interface SettingInfo {
   preview: string | null;
 }
 
-export type SettingsMap = Record<"steam_api_key" | "steam_id" | "rawg_api_key", SettingInfo>;
+export type SettingsMap = Record<
+  "steam_api_key" | "steam_id" | "igdb_client_id" | "igdb_client_secret" | "rawg_api_key",
+  SettingInfo
+>;
 
 export interface RestoreSummary {
   restored: number;

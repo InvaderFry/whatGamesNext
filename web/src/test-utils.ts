@@ -8,6 +8,8 @@ export function makeGame(overrides: Partial<Game> = {}): Game {
     steam_appid: 1145360,
     playtime_minutes: 0,
     metacritic: 93,
+    igdb_critic_rating: null,
+    igdb_user_rating: null,
     rawg_rating: null,
     steam_review_pct: 98,
     steam_review_count: 300000,
