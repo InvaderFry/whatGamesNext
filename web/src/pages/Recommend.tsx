@@ -31,9 +31,20 @@ const MODES: [string, string, string][] = [
 // for them would imply control that doesn't exist.
 const WEIGHTED_MODES = ["play-next", "surprise"];
 
+// The time-budget slider walks these stops rather than a fixed step, so the
+// short end — "I've got half an hour" — is reachable without making the long
+// end a 200-position crawl. Above 2h it's the same 2h steps as before.
+const BUDGET_STOPS = [0.5, 1, ...Array.from({ length: 50 }, (_, i) => (i + 1) * 2)];
+const DEFAULT_BUDGET_INDEX = BUDGET_STOPS.indexOf(20);
+
+function formatBudget(hours: number): string {
+  return hours < 1 ? `${hours * 60}m` : `${hours}h`;
+}
+
 export default function Recommend() {
   const [mode, setMode] = useState("play-next");
-  const [budget, setBudget] = useState(20);
+  const [budgetIndex, setBudgetIndex] = useState(DEFAULT_BUDGET_INDEX);
+  const budget = BUDGET_STOPS[budgetIndex];
   const [useBudget, setUseBudget] = useState(true);
   const [results, setResults] = useState<Recommendation[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -143,15 +154,16 @@ export default function Recommend() {
         </label>
         <input
           type="range"
-          min={2}
-          max={100}
-          step={2}
-          aria-label="Time budget in hours"
-          value={budget}
+          min={0}
+          max={BUDGET_STOPS.length - 1}
+          step={1}
+          aria-label="Time budget"
+          aria-valuetext={formatBudget(budget)}
+          value={budgetIndex}
           disabled={!useBudget}
-          onChange={(e) => setBudget(Number(e.target.value))}
+          onChange={(e) => setBudgetIndex(Number(e.target.value))}
         />
-        <b style={{ color: "var(--text)" }}>{budget}h</b> to spend on my next game
+        <b style={{ color: "var(--text)" }}>{formatBudget(budget)}</b> to spend on my next game
         {mode === "surprise" && (
           <button className="btn" onClick={reload}>
             🎲 Reroll
