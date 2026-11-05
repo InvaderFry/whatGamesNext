@@ -274,7 +274,7 @@ export type SortKey =
 
 /** The same fallback order as effectiveRating in score.ts, less the personal rating. */
 const RATING_SQL =
-  "COALESCE(metacritic, igdb_critic_rating, rawg_rating * 20, steam_review_pct, igdb_user_rating)";
+  "COALESCE(metacritic, steam_review_pct, igdb_critic_rating, rawg_rating * 20, igdb_user_rating)";
 
 const SORT_SQL: Record<SortKey, string> = {
   title: "lower(title)",

@@ -32,13 +32,13 @@ export const DEFAULT_WEIGHTS: Weights = {
  */
 export function effectiveRating(g: GameRow): number | null {
   if (g.personal_rating != null) return g.personal_rating * 10; // stored 1–10
-  // Critics before players, as before: Metacritic, then IGDB's own critic
-  // average, which covers far more games than Metacritic does.
+  // Metacritic first, then Steam's review share — the biggest crowd of players
+  // anywhere — ahead of IGDB's critic average, the RAWG backup, and last
+  // IGDB's own members, the smallest sample of the lot.
   if (g.metacritic != null) return g.metacritic;
+  if (g.steam_review_pct != null) return g.steam_review_pct;
   if (g.igdb_critic_rating != null) return g.igdb_critic_rating;
   if (g.rawg_rating != null) return g.rawg_rating * 20; // RAWG is 0–5
-  // Steam's review share comes from a far bigger crowd than IGDB's members.
-  if (g.steam_review_pct != null) return g.steam_review_pct;
   if (g.igdb_user_rating != null) return g.igdb_user_rating;
   return null;
 }

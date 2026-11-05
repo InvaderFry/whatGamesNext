@@ -73,6 +73,8 @@ tab list (arrow keys, Home/End), and `prefers-reduced-motion` is respected.
 - **RAWG (optional backup)**: [RAWG](https://rawg.io/apidocs) was the original ratings source but
   is often down for days at a time, so it's now only asked when IGDB isn't set up, errors, or has
   no match for a game. It's likely to be removed in a future version — you don't need a key.
+- **Which rating a game shows**: the first one it has, in this order — your own 1–10 score,
+  Metacritic, Steam review %, IGDB's critic average, RAWG, then IGDB's user rating.
 - **Length**: [HowLongToBeat](https://howlongtobeat.com) (unofficial — fails soft if it changes).
 - **Difficulty**: no public source exists, so it's estimated from genres/tags (souls-like, casual,
   roguelike, …) on a 1–5 scale, and you can override it per game. Tags nudge a genre baseline
