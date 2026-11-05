@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { lookupHltb, resetHltbTokenForTests, searchBody } from "./hltb.js";
+import { lookupHltb, RATE_LIMIT_COOLDOWN_MS, resetHltbTokenForTests, searchBody } from "./hltb.js";
 
 const HADES_HIT = {
   data: [
@@ -92,10 +92,70 @@ describe("lookupHltb", () => {
     expect(searches()).toHaveLength(2);
   });
 
-  it("throws when rate limited, without burning a second token", async () => {
-    route(() => new Response("slow down", { status: 429 }));
-    await expect(lookupHltb("Hades")).rejects.toThrow("HLTB search 429");
-    expect(tokensIssued).toBe(1);
+  it("after a 429, holds off, drops the dead token and retries with a fresh one", async () => {
+    vi.useFakeTimers();
+    try {
+      let searchesSeen = 0;
+      route(() => {
+        searchesSeen++;
+        return searchesSeen === 1
+          ? Response.json({ error: "Too many requests" }, { status: 429 })
+          : Response.json(HADES_HIT);
+      });
+
+      const pending = lookupHltb("Hades");
+      await vi.advanceTimersByTimeAsync(RATE_LIMIT_COOLDOWN_MS - 1000);
+      // Still cooling down: nothing retried yet.
+      expect(searches()).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect((await pending)?.main).toBe(23.6);
+      // The token that hit the limit is dead, so the retry used a new one.
+      expect(tokensIssued).toBe(2);
+      const [, retry] = searches()[1];
+      expect(retry.headers["x-auth-token"]).toBe("token-2");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("makes other lookups wait out the cooldown too", async () => {
+    vi.useFakeTimers();
+    try {
+      let searchesSeen = 0;
+      route(() => {
+        searchesSeen++;
+        return searchesSeen === 1
+          ? Response.json({ error: "Too many requests" }, { status: 429 })
+          : Response.json(HADES_HIT);
+      });
+
+      const first = lookupHltb("Hades");
+      await vi.advanceTimersByTimeAsync(0);
+      const second = lookupHltb("Hades");
+      await vi.advanceTimersByTimeAsync(RATE_LIMIT_COOLDOWN_MS / 2);
+      // The second lookup hasn't gone out into the rate limit.
+      expect(searches()).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(RATE_LIMIT_COOLDOWN_MS);
+      await Promise.all([first, second]);
+      expect(searches()).toHaveLength(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says it was rate limited when the retry is limited too", async () => {
+    vi.useFakeTimers();
+    try {
+      route(() => Response.json({ error: "Too many requests" }, { status: 429 }));
+      const pending = lookupHltb("Hades");
+      const assertion = expect(pending).rejects.toThrow(/429 — rate limited/);
+      await vi.advanceTimersByTimeAsync(RATE_LIMIT_COOLDOWN_MS);
+      await assertion;
+      expect(searches()).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("throws when the token endpoint fails", async () => {

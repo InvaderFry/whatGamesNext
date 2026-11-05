@@ -38,6 +38,11 @@ export interface EnrichProgress {
   lastError: string | null;
   /** True after several consecutive HLTB errors — the scraper is likely broken or blocked. */
   hltbUnavailable: boolean;
+  /**
+   * The last HLTB error, so the UI can say *why* lengths are being skipped. A
+   * rate limit, a site change and an outage all used to read "unreachable".
+   */
+  hltbError: string | null;
   /** True after several consecutive IGDB errors — bad credentials, a rate limit, or an outage. */
   igdbUnavailable: boolean;
   /** True after several consecutive RAWG errors — an expired key, a rate limit, or an outage. */
@@ -91,6 +96,7 @@ const progress = {
   current: null as string | null,
   lastError: null as string | null,
   hltbUnavailable: false,
+  hltbError: null as string | null,
   igdbUnavailable: false,
   rawgUnavailable: false,
 };
@@ -133,15 +139,17 @@ class RateLimiter {
   }
 }
 
-// RAWG's free tier and HLTB's unofficial endpoint both tolerate roughly one
-// request a second. IGDB allows four a second and a lookup can take two
+// RAWG's free tier tolerates roughly one request a second. HLTB allows about
+// 60 searches a minute and revokes the token on the 61st (see sources/hltb.ts),
+// so it gets 40 a minute — one every 1.5 seconds, the same pace as Steam's
+// store lane, so it doesn't slow a run of Steam games. IGDB allows four a second and a lookup can take two
 // queries (by Steam appid, then by title), hence half a second per lookup.
 // Steam's store details are held to ~200 per five minutes; its review summary
 // is more generous.
 const limiters = {
   igdb: new RateLimiter(500),
   rawg: new RateLimiter(1000),
-  hltb: new RateLimiter(1000),
+  hltb: new RateLimiter(1500),
   steamStore: new RateLimiter(1500),
   steam: new RateLimiter(400),
 };
@@ -190,6 +198,7 @@ export function startEnrichment(): { started: boolean } {
   progress.failed = 0;
   progress.lastError = null;
   progress.hltbUnavailable = false;
+  progress.hltbError = null;
   progress.igdbUnavailable = false;
   progress.rawgUnavailable = false;
   hltbConsecutiveErrors = 0;
@@ -257,6 +266,8 @@ async function askIgdb(game: GameRow): Promise<Lookup<IgdbGameData>> {
   // The breaker is open: skip the call, but the game is still unfinished.
   if (progress.igdbUnavailable) return { ok: false };
   await limiters.igdb.take();
+  // The breaker may have opened while this game waited for its slot.
+  if (progress.igdbUnavailable) return { ok: false };
   try {
     const data = await lookupIgdb(game.title, game.steam_appid ?? game.steam_link_appid);
     igdbConsecutiveErrors = 0;
@@ -272,6 +283,7 @@ async function askIgdb(game: GameRow): Promise<Lookup<IgdbGameData>> {
 async function askRawg(game: GameRow): Promise<Lookup<RawgGameData>> {
   if (progress.rawgUnavailable) return { ok: false };
   await limiters.rawg.take();
+  if (progress.rawgUnavailable) return { ok: false };
   try {
     const data = await lookupRawg(game.title);
     rawgConsecutiveErrors = 0;
@@ -323,12 +335,14 @@ async function enrichOne(game: GameRow) {
   // HLTB is unofficial and flaky — missing lengths are acceptable, but flag
   // a run of consecutive errors so the UI can say lengths are being skipped.
   let hltb = null;
+  if (!progress.hltbUnavailable) await limiters.hltb.take();
+  // Checked again after the wait: the breaker may have opened in the meantime.
   if (!progress.hltbUnavailable) {
-    await limiters.hltb.take();
     try {
       hltb = await lookupHltb(game.title);
       hltbConsecutiveErrors = 0;
-    } catch {
+    } catch (err) {
+      progress.hltbError = err instanceof Error ? err.message : String(err);
       hltbConsecutiveErrors++;
       if (hltbConsecutiveErrors >= HLTB_UNAVAILABLE_AFTER) progress.hltbUnavailable = true;
     }

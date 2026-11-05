@@ -611,8 +611,13 @@ export default function Settings() {
         )}
         {enrich?.hltbUnavailable && (
           <p className="hint status-warn">
-            HowLongToBeat looks unreachable right now — game lengths are being skipped. They'll be
-            filled in if you re-run enrichment once it's back.
+            HowLongToBeat lookups keep failing, so game lengths are being skipped for the rest of
+            this run
+            {enrich.hltbError ? <> (last error: {enrich.hltbError})</> : null}.{" "}
+            {/rate limited|429/.test(enrich.hltbError ?? "")
+              ? "HowLongToBeat is limiting how fast it can be searched — wait a minute, then run "
+              : "HowLongToBeat has no official API, so a change to its site can break this. Run "}
+            <strong>Refresh game data</strong> later to fill the lengths in.
           </p>
         )}
         {enrich?.lastError && <p className="hint status-warn">Last error: {enrich.lastError}</p>}
