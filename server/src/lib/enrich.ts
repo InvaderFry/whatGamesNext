@@ -309,8 +309,8 @@ async function enrichOne(game: GameRow) {
   const igdb: Lookup<IgdbGameData> = hasIgdb ? await askIgdb(game) : { ok: false };
   // RAWG is only worth a call when IGDB couldn't help: not set up, erroring,
   // or no match for this title.
-  const rawg: Lookup<RawgGameData> =
-    hasRawg && !(igdb.ok && igdb.data) ? await askRawg(game) : { ok: false };
+  const rawgNeeded = hasRawg && !(igdb.ok && igdb.data);
+  const rawg: Lookup<RawgGameData> = rawgNeeded ? await askRawg(game) : { ok: false };
   const igdbData = igdb.ok ? igdb.data : null;
   const rawgData = rawg.ok ? rawg.data : null;
 
@@ -343,15 +343,22 @@ async function enrichOne(game: GameRow) {
     review = await fetchReviewSummary(appid).catch(() => review);
   }
 
-  // Which answer decides that a game is finished. IGDB when it's set up — an
-  // IGDB error leaves the game pending even if RAWG filled the gap, so the
-  // next run fetches the better data once IGDB is back. RAWG only when it's
-  // the one ratings source there is. Neither set up: pending, so adding
-  // credentials later backfills it — 'done' would strand it, since only
-  // failures requeue. Steam and HLTB deliberately don't gate this — both are
-  // keyless best-effort extras, and holding every game pending on a flaky
-  // scraper would mean a library that never finishes enriching.
-  const finished = hasIgdb ? igdb.ok : hasRawg ? rawg.ok : false;
+  // A game is finished only when every keyed source that was needed for it
+  // gave a real answer:
+  //   - IGDB, when it's set up. An IGDB error leaves the game pending even if
+  //     RAWG filled the gap, so the next run fetches the better data once IGDB
+  //     is back.
+  //   - RAWG, whenever it was needed — it's the only source, or IGDB had no
+  //     match. A RAWG error (or its breaker being open) after IGDB's "no
+  //     match" must not count as done: RAWG may well know the game, and 'done'
+  //     would mean never asking it again. If RAWG stays down, those games
+  //     just stay pending; removing the RAWG key lets them finish.
+  //   - Neither set up: pending, so adding credentials later backfills it —
+  //     'done' would strand it, since only failures requeue.
+  // Steam and HLTB deliberately don't gate this — both are keyless
+  // best-effort extras, and holding every game pending on a flaky scraper
+  // would mean a library that never finishes enriching.
+  const finished = (hasIgdb || hasRawg) && (!hasIgdb || igdb.ok) && (!rawgNeeded || rawg.ok);
 
   // Every source's genres and tags together: IGDB's are the most detailed,
   // Steam's are the broad ones RAWG used to give, RAWG fills in when it was

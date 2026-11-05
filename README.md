@@ -149,8 +149,9 @@ a `.env` file (`cp .env.example .env`) — the Settings values win when both are
    It's resumable: results are saved per game, so an interrupted run picks up where it stopped and
    already-enriched games are skipped. A game whose IGDB lookup failed — wrong credentials, a rate
    limit, an outage — stays pending rather than counting as enriched (RAWG fills in meanwhile if you
-   set it up), so the next run retries it on its own. If it keeps failing, Settings says so instead
-   of reporting a clean run.
+   set it up), so the next run retries it on its own. The same goes for a game IGDB can't find when
+   you've set up RAWG and RAWG errors. If RAWG stays down, removing its key lets those games finish.
+   If a source keeps failing, Settings says so instead of reporting a clean run.
    Already enriched with RAWG before IGDB was added? Click **Refresh game data** once to fetch IGDB
    and Steam data for the whole library. Nothing RAWG already saved is thrown away.
 3. Go to **What next?** and pick a mode.

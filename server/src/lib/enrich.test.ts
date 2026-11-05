@@ -347,6 +347,57 @@ describe("IGDB + Steam, with RAWG as the backup", () => {
     expect(JSON.parse(g.genres)).toEqual(["Puzzle"]);
   });
 
+  it("keeps a game pending when IGDB has no match and the RAWG backup errors", async () => {
+    useIgdb();
+    settings.set("rawg_api_key", "key");
+    seed([{ title: "Obscure Game" }]);
+    lookupIgdb.mockResolvedValue(null);
+    lookupRawg.mockRejectedValue(new Error("RAWG API error 503"));
+
+    await runQueue();
+
+    // RAWG might well know this game; 'done' would mean never asking it again.
+    expect(row("Obscure Game").enrich_status).toBe("pending");
+  });
+
+  it("keeps IGDB-unmatched games pending while RAWG's breaker is open", async () => {
+    useIgdb();
+    settings.set("rawg_api_key", "key");
+    const titles = Array.from({ length: 8 }, (_, i) => `Obscure ${i}`);
+    seed(titles.map((title) => ({ title })));
+    lookupIgdb.mockResolvedValue(null);
+    lookupRawg.mockRejectedValue(new Error("RAWG API error 503"));
+
+    await runQueue();
+
+    expect(getEnrichProgress().rawgUnavailable).toBe(true);
+    // Including the games the breaker skipped without calling RAWG at all.
+    for (const title of titles) expect(row(title).enrich_status).toBe("pending");
+  });
+
+  it("marks a game done when neither IGDB nor RAWG has heard of it", async () => {
+    useIgdb();
+    settings.set("rawg_api_key", "key");
+    seed([{ title: "Some Itch Jam Game" }]);
+    lookupIgdb.mockResolvedValue(null);
+    lookupRawg.mockResolvedValue(null);
+
+    await runQueue();
+
+    expect(row("Some Itch Jam Game").enrich_status).toBe("done");
+  });
+
+  it("marks an IGDB-unmatched game done when no RAWG key is set", async () => {
+    useIgdb();
+    seed([{ title: "Some Itch Jam Game" }]);
+    lookupIgdb.mockResolvedValue(null);
+
+    await runQueue();
+
+    expect(lookupRawg).not.toHaveBeenCalled();
+    expect(row("Some Itch Jam Game").enrich_status).toBe("done");
+  });
+
   it("keeps a game pending when IGDB errors, even if RAWG filled the gap", async () => {
     useIgdb();
     settings.set("rawg_api_key", "key");
