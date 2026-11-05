@@ -11,6 +11,9 @@ dotenv.config({ path: path.join(repoRoot, ".env") });
 export const env = {
   steamApiKey: process.env.STEAM_API_KEY ?? "",
   steamId: process.env.STEAM_ID ?? "",
+  igdbClientId: process.env.IGDB_CLIENT_ID ?? "",
+  igdbClientSecret: process.env.IGDB_CLIENT_SECRET ?? "",
+  // Backup source, likely to be deprecated — see sources/rawg.ts.
   rawgApiKey: process.env.RAWG_API_KEY ?? "",
   port: Number(process.env.PORT) || 3001,
   // Loopback by default: the API has no auth and can read and write your API

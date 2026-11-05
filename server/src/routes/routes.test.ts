@@ -957,6 +957,19 @@ describe("settings routes", () => {
     const status = await request(app).get("/api/sync/status");
     expect(status.body.config.steamConfigured).toBe(true);
     expect(status.body.config.rawgConfigured).toBe(false);
+    expect(status.body.config.igdbConfigured).toBe(false);
+  });
+
+  it("needs both IGDB values before calling it configured, and masks both", async () => {
+    const half = await request(app).put("/api/settings").send({ igdb_client_id: "abcd1234wxyz" });
+    expect(half.body.igdb_client_id).toMatchObject({ configured: true, preview: "…wxyz" });
+    expect((await request(app).get("/api/sync/status")).body.config.igdbConfigured).toBe(false);
+
+    const full = await request(app)
+      .put("/api/settings")
+      .send({ igdb_client_secret: "s3cr3tvalue9876" });
+    expect(full.body.igdb_client_secret.preview).toBe("…9876");
+    expect((await request(app).get("/api/sync/status")).body.config.igdbConfigured).toBe(true);
   });
 
   it("clears a setting with null", async () => {

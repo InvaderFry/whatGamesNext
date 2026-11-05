@@ -38,12 +38,13 @@ Worth reading before writing anything, so new work doesn't look bolted on.
 
 ### Environment gotchas that cost time
 
-- **Every external data source is unreachable** from the dev sandbox under its network policy — all
-  Steam domains (`api.steampowered.com`, `store.steampowered.com`, `steamcommunity.com`) and also
-  `api.rawg.io` and `howlongtobeat.com`, all curl exit 56. Only the npm registry resolves. Anything
-  touching a source has to be built against fixtures and verified by unit test, and the demo library
-  is the only way to drive the real UI. Worth weighing when picking what to do next: the roadmap
-  items that lean hardest on Steam are the ones that can't be confirmed here at all.
+- **External data sources may be unreachable** from the dev sandbox, depending on its network
+  policy. In one session every Steam domain, `api.rawg.io` and `howlongtobeat.com` failed (curl
+  exit 56); in a later one `store.steampowered.com` and `api.igdb.com` answered but `rawg.io` still
+  didn't. IGDB also needs real Twitch credentials, so it has only been verified against fixtures.
+  Anything touching a source has to be built against fixtures and verified by unit test, and the
+  demo library is the only way to drive the real UI. Worth weighing when picking what to do next:
+  the roadmap items that lean hardest on Steam are the ones that can't be confirmed here at all.
 - **jsdom has no `Element.prototype.scrollIntoView`** — stubbed in `web/src/test-setup.ts`.
 - Playwright is at `/opt/pw-browsers`; don't run `playwright install`.
 - `data/` is gitignored. `rm -f data/games.db*` then restart with `DEMO=1` for a clean library.
@@ -96,8 +97,9 @@ They shouldn't pollute backlog counts or recommendations either way.
 
 ### 4. Co-op / multiplayer filter
 
-The cheap half is nearly free: RAWG tags already include co-op and multiplayer markers, and the
-Library and Recommend pages both have tag filtering. The expensive half — intersecting with a
+The cheap half is nearly free: enrichment already stores IGDB's game modes ("Co-operative",
+"Multiplayer", "Split screen") and Steam's play-mode categories ("Co-op", "Online Co-op", "PvP") as
+tags, and the Library and Recommend pages both have tag filtering. The expensive half — intersecting with a
 friend's library via `GetFriendList` + their `GetOwnedGames` to answer "what do we both own" — is a
 much bigger feature and depends on their profile being public.
 

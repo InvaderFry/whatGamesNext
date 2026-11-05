@@ -58,12 +58,23 @@ tab list (arrow keys, Home/End), and `prefers-reduced-motion` is respected.
 
 ## Data sources
 
-- **Steam**: official Web API (owned games + playtime) and the public review-summary endpoint.
+- **Steam**: official Web API (owned games + playtime), plus two public store endpoints — the review
+  summary and the store page details (Metacritic score, genres, co-op/multiplayer) — which need no
+  key.
 - **Epic**: the community [legendary](https://github.com/derrod/legendary) CLI, or manual paste
   (Epic has no official library API).
 - **Other stores** (GOG, itch.io, Humble, physical…): paste titles in Settings → Other stores —
   one per line, or CSV with `title` and optional `playtime_hours` columns.
-- **Ratings**: [RAWG](https://rawg.io/apidocs) — includes Metacritic scores, user ratings, genres, tags.
+- **Ratings, genres and tags**: [IGDB](https://www.igdb.com/api) (owned by Twitch; free for
+  personal use) is the main source — critic and user ratings, genres, themes, keywords and game
+  modes. It also knows each game's Steam id, which is how **Epic and pasted games get Steam's
+  review % and Metacritic score too**, not just games synced from Steam. Steam games are matched to
+  IGDB exactly by their Steam id; everything else is matched by title.
+- **RAWG (optional backup)**: [RAWG](https://rawg.io/apidocs) was the original ratings source but
+  is often down for days at a time, so it's now only asked when IGDB isn't set up, errors, or has
+  no match for a game. It's likely to be removed in a future version — you don't need a key.
+- **Which rating a game shows**: the first one it has, in this order — your own 1–10 score,
+  Metacritic, Steam review %, IGDB's critic average, RAWG, then IGDB's user rating.
 - **Length**: [HowLongToBeat](https://howlongtobeat.com) (unofficial — fails soft if it changes).
 - **Difficulty**: no public source exists, so it's estimated from genres/tags (souls-like, casual,
   roguelike, …) on a 1–5 scale, and you can override it per game. Tags nudge a genre baseline
@@ -93,25 +104,56 @@ npm run dev            # server on :3001, UI on http://localhost:5173
 Enter these in the app under **Settings → API keys** (stored in the local database), or put them in
 a `.env` file (`cp .env.example .env`) — the Settings values win when both are set.
 
-1. **Steam**: get an API key at [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
-   → `STEAM_API_KEY`. Find your SteamID64 (17-digit number) at [steamid.io](https://steamid.io)
-   → `STEAM_ID`. Your profile's _game details_ must be public for the API to list your games.
-2. **RAWG**: get a key at [rawg.io/apidocs](https://rawg.io/apidocs) → `RAWG_API_KEY`.
+1. **Steam** (for your Steam library):
+   1. Sign in at [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey). For the
+      domain name, anything works — `localhost` is fine. Copy the key → **Steam API key** /
+      `STEAM_API_KEY`.
+   2. Find your SteamID64 (a 17-digit number) at [steamid.io](https://steamid.io) → **SteamID64** /
+      `STEAM_ID`.
+   3. In Steam, open your profile → **Edit Profile → Privacy Settings** and set **Game details** to
+      **Public**. Otherwise the API can't list your games.
+2. **IGDB** (ratings, genres and tags — about five minutes, and you only do it once). IGDB is run
+   by Twitch, so you sign in with a Twitch account:
+   1. If you don't have a Twitch account, sign up at [twitch.tv](https://www.twitch.tv/). Twitch
+      requires **two-factor authentication** before it lets you register an app — turn it on under
+      **Settings → Security and Privacy**.
+   2. Go to the [Twitch developer console](https://dev.twitch.tv/console/apps) and click
+      **Register Your Application**.
+   3. Fill it in: **Name** — anything unique, e.g. `whatgamesnext-yourname`. **OAuth Redirect
+      URLs** — `http://localhost` (IGDB doesn't use it, but the form requires one). **Category** —
+      _Application Integration_. **Client Type** — **Confidential**. Click **Create**.
+   4. Click **Manage** on the new app. Copy the **Client ID** → **IGDB Client ID** /
+      `IGDB_CLIENT_ID`.
+   5. Click **New Secret** and copy it → **IGDB Client Secret** / `IGDB_CLIENT_SECRET`. Twitch only
+      shows the secret once; if you lose it, generate a new one (the old one stops working).
+
+   The app logs in to IGDB with these itself and renews its login as needed — there's nothing else
+   to do. IGDB is free for non-commercial use under the
+   [Twitch Developer Agreement](https://www.twitch.tv/p/legal/developer-agreement/).
+
 3. **Epic (optional)**: `pip install legendary-gl`, then `legendary auth` once. Or skip it and paste
    your titles in Settings → Epic.
+4. **RAWG (optional backup — you can skip this)**: a key from
+   [rawg.io/apidocs](https://rawg.io/apidocs) → **RAWG API key** / `RAWG_API_KEY`. Only used for
+   games IGDB can't answer for. RAWG is frequently down, so don't worry if its site won't load.
 
 ### First run
 
 1. Open **Settings**, click **Sync Steam library** (and Epic). It'll offer to enrich whatever it
    brought in.
 2. Enrichment fetches ratings, lengths and review scores for every game. Each source is held to
-   about one request a second, but three games are worked at once so the sources are waited on in
-   parallel — roughly a game a second overall, or ~25 minutes for 1,500 games. A progress bar and
+   its own polite pace, but three games are worked at once so the sources are waited on in
+   parallel. Steam's store-details endpoint is the slowest lane (about one request every 1.5
+   seconds), so expect roughly 40 minutes for 1,500 games that have a Steam id. A progress bar and
    time estimate show while it runs.
    It's resumable: results are saved per game, so an interrupted run picks up where it stopped and
-   already-enriched games are skipped. A game whose RAWG lookup failed — an expired key, a spent
-   daily quota, an outage — stays pending rather than counting as enriched, so the next run
-   retries it on its own. If it keeps failing, Settings says so instead of reporting a clean run.
+   already-enriched games are skipped. A game whose IGDB lookup failed — wrong credentials, a rate
+   limit, an outage — stays pending rather than counting as enriched (RAWG fills in meanwhile if you
+   set it up), so the next run retries it on its own. The same goes for a game IGDB can't find when
+   you've set up RAWG and RAWG errors. If RAWG stays down, removing its key lets those games finish.
+   If a source keeps failing, Settings says so instead of reporting a clean run.
+   Already enriched with RAWG before IGDB was added? Click **Refresh game data** once to fetch IGDB
+   and Steam data for the whole library. Nothing RAWG already saved is thrown away.
 3. Go to **What next?** and pick a mode.
 
 ### Backup and restore

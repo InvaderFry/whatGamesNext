@@ -35,12 +35,23 @@ function game(overrides: Partial<GameRow>): GameRow {
 }
 
 describe("effectiveRating", () => {
-  it("prefers metacritic, then rawg (scaled), then steam", () => {
-    expect(effectiveRating(game({ metacritic: 90, rawg_rating: 2, steam_review_pct: 50 }))).toBe(
-      90,
-    );
-    expect(effectiveRating(game({ rawg_rating: 4.5, steam_review_pct: 50 }))).toBe(90);
-    expect(effectiveRating(game({ steam_review_pct: 85 }))).toBe(85);
+  it("prefers metacritic, then steam, then IGDB critics, then rawg (scaled), then IGDB users", () => {
+    const all = {
+      metacritic: 90,
+      steam_review_pct: 80,
+      igdb_critic_rating: 70,
+      rawg_rating: 3, // 60 once scaled
+      igdb_user_rating: 50,
+    };
+    expect(effectiveRating(game(all))).toBe(90);
+    expect(effectiveRating(game({ ...all, metacritic: null }))).toBe(80);
+    expect(effectiveRating(game({ ...all, metacritic: null, steam_review_pct: null }))).toBe(70);
+    expect(
+      effectiveRating(
+        game({ ...all, metacritic: null, steam_review_pct: null, igdb_critic_rating: null }),
+      ),
+    ).toBe(60);
+    expect(effectiveRating(game({ igdb_user_rating: 50 }))).toBe(50);
     expect(effectiveRating(game({}))).toBeNull();
   });
 });

@@ -14,6 +14,18 @@ export interface GameRow {
   epic_app_name: string | null;
   playtime_minutes: number;
   metacritic: number | null;
+  /** Critic average from IGDB, 0–100. */
+  igdb_critic_rating: number | null;
+  /** IGDB members' rating, 0–100. */
+  igdb_user_rating: number | null;
+  igdb_id: number | null;
+  /**
+   * The game's Steam appid as IGDB knows it, for a game that wasn't synced
+   * from Steam. Kept apart from steam_appid on purpose: that column means "you
+   * own this on Steam" and drives store matching and merges, whereas this one
+   * only says where to look up reviews and a Metacritic score.
+   */
+  steam_link_appid: number | null;
   rawg_id: number | null;
   rawg_rating: number | null;
   steam_review_pct: number | null;
@@ -74,6 +86,10 @@ const GAMES_DDL = `
       epic_app_name TEXT,
       playtime_minutes INTEGER NOT NULL DEFAULT 0,
       metacritic INTEGER,
+      igdb_critic_rating INTEGER,
+      igdb_user_rating INTEGER,
+      igdb_id INTEGER,
+      steam_link_appid INTEGER,
       rawg_id INTEGER,
       rawg_rating REAL,
       steam_review_pct INTEGER,
@@ -164,6 +180,9 @@ function migrate(db: Database.Database) {
   if (!cols.includes("personal_rating"))
     db.exec("ALTER TABLE games ADD COLUMN personal_rating INTEGER");
   if (!cols.includes("notes")) db.exec("ALTER TABLE games ADD COLUMN notes TEXT");
+  for (const col of ["igdb_critic_rating", "igdb_user_rating", "igdb_id", "steam_link_appid"]) {
+    if (!cols.includes(col)) db.exec(`ALTER TABLE games ADD COLUMN ${col} INTEGER`);
+  }
 
   // Two older shapes need the table rebuilt: one where the store CHECK only
   // allowed steam/epic/both, and one where normalized_title was UNIQUE.
